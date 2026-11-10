@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en" data-type="software">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="page-type" content="software">
+<meta name="site-kind" content="software">
+<meta name="color-scheme" content="light dark">
+<title>Screen Portals: one mouse and keyboard for every PC on your desk</title>
+<meta name="description" content="A free, open-source Windows app that shares one mouse, keyboard, clipboard, files and sound between the computers on your desk. Encrypted, on your own network.">
+<meta property="og:title" content="Screen Portals">
+<meta property="og:description" content="One mouse and keyboard for every Windows PC on your desk. Free, open source, encrypted.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#F5F4F0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20'%3E%3Crect x='1' y='2' width='11' height='16' rx='3' fill='none' stroke='%231C1B18' stroke-width='1.6'/%3E%3Crect x='16' y='2' width='11' height='16' rx='3' fill='none' stroke='%231C1B18' stroke-width='1.6'/%3E%3Cpath d='M14 5v10' stroke='%230A6B57' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  /* One system: one ink, one accent, one radius family, two button looks.
+     The same tokens as the app's own settings window. */
+  :root {
+    --bg: #F5F4F0; --surface: #FFFFFF; --ink: #1C1B18; --muted: #5E5A52;
+    --line: rgba(28, 27, 24, .14); --line-strong: rgba(28, 27, 24, .34);
+    --accent: #0A6B57; --on-accent: #FFFFFF; --accent-soft: rgba(10, 107, 87, .10);
+    --band: #1C1B18; --on-band: #F1EEE8; --band-muted: #A9A498; --band-accent: #45D3B0;
+    --r-sm: 8px; --r-md: 12px; --r-lg: 20px;
+    --text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    --ease: cubic-bezier(.2, .7, .2, 1);
+    --gutter: clamp(20px, 5vw, 72px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141311; --surface: #1E1C19; --ink: #F1EEE8; --muted: #A9A498;
+      --line: rgba(241, 238, 232, .14); --line-strong: rgba(241, 238, 232, .38);
+      --accent: #45D3B0; --on-accent: #0B2A23; --accent-soft: rgba(69, 211, 176, .12);
+      --band: #0C0B0A;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 var(--text); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p, ol, ul, dl, dd { margin: 0; padding: 0; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  .skip { position: absolute; left: var(--gutter); top: -60px; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: var(--r-sm); z-index: 10; }
+  .skip:focus { top: 12px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--gutter); }
+
+  /* ---- top bar ---- */
+  header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  header .wrap { height: 64px; display: flex; align-items: center; gap: 28px; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font: 600 18px/1 var(--display); letter-spacing: -.01em; }
+  nav { margin-left: auto; display: flex; gap: 28px; }
+  nav a { text-decoration: none; font-size: 15px; color: var(--muted); padding: 12px 0; background: linear-gradient(currentColor, currentColor) 0 calc(100% - 8px) / 0 1px no-repeat; transition: background-size .25s var(--ease), color .2s var(--ease); }
+  nav a:hover { color: var(--ink); background-size: 100% 1px; }
+
+  /* ---- buttons: one filled, one outlined ---- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 24px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); font-size: 16px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: transform .16s var(--ease), border-color .16s var(--ease), filter .16s var(--ease); }
+  .btn:hover { transform: translateY(-2px); border-color: var(--ink); }
+  .btn:active { transform: translateY(0) scale(.98); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover { border-color: var(--accent); filter: brightness(1.08); }
+  .band .btn { border-color: rgba(241, 238, 232, .4); color: var(--on-band); }
+  .band .btn.primary { background: var(--band-accent); border-color: var(--band-accent); color: #0B2A23; }
+
+  /* ---- sections: one idea per screen ---- */
+  section { min-height: 100vh; min-height: 100svh; display: flex; align-items: center; padding: 96px 0; scroll-margin-top: 64px; }
+  section > .wrap { width: 100%; }
+  .hero { min-height: calc(100svh - 64px); padding: 48px 0; }
+  .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 5vw, 80px); align-items: center; }
+  .eyebrow { font-size: 14px; font-weight: 600; color: var(--accent); letter-spacing: .02em; }
+  h1 { font: 600 clamp(38px, 5.2vw, 68px)/1.04 var(--display); letter-spacing: -.03em; margin: 16px 0 24px; text-wrap: balance; }
+  h2 { font: 600 clamp(30px, 3.6vw, 48px)/1.08 var(--display); letter-spacing: -.025em; margin-bottom: 20px; text-wrap: balance; }
+  h3 { font: 600 19px/1.25 var(--display); letter-spacing: -.01em; }
+  .lede { font-size: clamp(18px, 1.5vw, 21px); color: var(--muted); max-width: 34em; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .fact { margin-top: 24px; font-size: 15px; color: var(--muted); }
+  .band { background: var(--band); color: var(--on-band); }
+  .band .lede, .band .fact { color: var(--band-muted); }
+  .band .eyebrow { color: var(--band-accent); }
+
+  /* ---- the product itself, drawn live ---- */
+  .app { border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; box-shadow: 0 24px 60px -30px rgba(0, 0, 0, .35); }
+  .app-bar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); font: 600 14px/1 var(--display); }
+  .app-bar .state { margin-left: auto; font: 400 13px/1 var(--text); color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .app-bar .state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .stage { position: relative; aspect-ratio: 16 / 10; background-image: radial-gradient(var(--line) 1px, transparent 1.5px); background-size: 22px 22px; }
+  .scr { position: absolute; border: 1.5px solid var(--ink); border-radius: var(--r-md); background: var(--surface); display: grid; place-content: center; text-align: center; font: 600 clamp(12px, 1.2vw, 16px)/1.2 var(--display); }
+  .scr small { display: block; font: 500 12px/1.4 var(--text); color: var(--muted); }
+  .scr.me { background: var(--ink); color: var(--bg); }
+  .scr.me small { color: inherit; opacity: .7; }
+  .scr.a { left: 12%; top: 30%; width: 38%; height: 40%; }
+  .scr.b { left: 50.6%; top: 24%; width: 34%; height: 46%; }
+  .door { position: absolute; left: 49.6%; top: 32%; width: 6px; height: 36%; border-radius: 3px; background: var(--accent); z-index: 2; }
+  .cursor { position: absolute; left: 30%; top: 50%; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft); z-index: 3; animation: cross 4s var(--ease) infinite; }
+  @keyframes cross { 0%, 12% { left: 30%; top: 56%; } 46%, 60% { left: 68%; top: 44%; } 92%, 100% { left: 30%; top: 56%; } }
+  .hero .app { animation: enter .9s var(--ease) both; }
+  @keyframes enter { from { opacity: 0; transform: translateY(24px) scale(.98); } }
+
+  /* ---- what crosses: cards with small diagrams ---- */
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 40px; }
+  .card { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 24px; display: flex; flex-direction: column; gap: 10px; transition: transform .2s var(--ease), border-color .2s var(--ease); }
+  .card:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+  .card p { font-size: 15px; color: var(--muted); }
+  .wire { height: 56px; position: relative; margin-bottom: 6px; }
+  .wire::before, .wire::after { content: ""; position: absolute; top: 12px; width: 38%; height: 32px; border: 1.5px solid var(--line-strong); border-radius: 6px; }
+  .wire::before { left: 0; } .wire::after { right: 0; }
+  .wire i { position: absolute; left: 38%; right: 38%; top: 27px; height: 2px; background: var(--line-strong); }
+  .wire i::after { content: ""; position: absolute; top: -4px; left: 0; width: 10px; height: 10px; border-radius: var(--pip, 50%); background: var(--accent); animation: pulse 3s var(--ease) infinite; animation-delay: var(--d, 0s); }
+  @keyframes pulse { 0% { left: 0; opacity: 0; } 15%, 85% { opacity: 1; } 100% { left: calc(100% - 10px); opacity: 0; } }
+  .card:hover .wire i::after { animation-duration: 1.4s; }
+
+  /* ---- arranging ---- */
+  .modes { display: grid; gap: 0; border: 1px solid var(--line-strong); border-radius: var(--r-md); overflow: hidden; margin-top: 28px; }
+  .modes div { display: grid; grid-template-columns: 52px 1fr; gap: 14px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--line); font-size: 15px; }
+  .modes div:first-child { border-top: 0; background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .modes b { display: block; font-weight: 600; font-size: 16px; }
+  .modes span { color: var(--muted); }
+  .modes svg rect { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+  .modes svg rect + rect { stroke: var(--line-strong); }
+  .modes svg path { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
+
+  /* ---- privacy ---- */
+  .code { font: 600 clamp(44px, 6vw, 84px)/1 var(--mono); letter-spacing: .04em; color: var(--band-accent); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pair > div { border: 1px solid rgba(241, 238, 232, .22); border-radius: var(--r-lg); padding: 32px 24px; text-align: center; }
+  .pair small { display: block; margin-bottom: 18px; font-size: 14px; color: var(--band-muted); }
+  .points { display: grid; gap: 18px; margin-top: 28px; }
+  .points dt { font-weight: 600; }
+  .points dd { color: var(--band-muted); font-size: 16px; }
+
+  /* ---- start ---- */
+  .steps { counter-reset: step; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 40px 0; }
+  .steps li { counter-increment: step; border-top: 2px solid var(--ink); padding-top: 18px; }
+  .steps li::before { content: counter(step); display: block; font: 600 40px/1 var(--display); letter-spacing: -.03em; margin-bottom: 14px; color: var(--accent); }
+  .steps p { color: var(--muted); font-size: 16px; margin-top: 6px; }
+  .honest { border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px 24px; font-size: 15px; color: var(--muted); max-width: 60em; }
+  .honest b { color: var(--ink); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0; font-size: 14px; color: var(--muted); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+  footer a { text-underline-offset: 3px; }
+  footer span:first-child { margin-right: auto; }
+
+  @media (max-width: 900px) {
+    nav a:not(.keep) { display: none; }
+    .split { grid-template-columns: 1fr; }
+    .cards, .steps { grid-template-columns: 1fr; }
+    section { padding: 64px 0; }
+    .actions .btn { width: 100%; }
+    .pair { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    html { scroll-behavior: auto; }
+    .cursor { left: 68%; top: 44%; }
+    .wire i::after { left: calc(50% - 5px); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<header>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Screen Portals, top of page">
+      <svg width="28" height="20" viewBox="0 0 28 20" aria-hidden="true"><rect x="1" y="2" width="11" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="16" y="2" width="11" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 5v10" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg>
+      Screen Portals
+    </a>
+    <nav aria-label="Sections">
+      <a href="#crosses">What crosses</a>
+      <a href="#arrange">Arranging</a>
+      <a href="#private">Privacy</a>
+      <a href="#start" class="keep">Get it</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" id="top">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">Free and open source, for Windows</p>
+        <h1>One mouse and keyboard for every PC on your desk</h1>
+        <p class="lede">Push the cursor through the edge of one screen and it comes out on the next computer. Your typing, clipboard, files and sound follow it.</p>
+        <div class="actions">
+          <a class="btn primary" data-link="download" href="#start">Download for Windows</a>
+          <a class="btn" data-link="source" href="#start">Read the source</a>
+        </div>
+        <p class="fact">Windows 10 and 11. One file under 3 MB, nothing to install, no account.</p>
+      </div>
+      <div class="app" role="img" aria-label="The Screen Portals window: two computers side by side with a marked edge between them, and the cursor moving from one to the other.">
+        <div class="app-bar">Screen Portals <span class="state">Connected to Work laptop</span></div>
+        <div class="stage">
+          <div class="scr me a">Desk PC<small>This computer</small></div>
+          <div class="scr b">Work laptop<small>1920 × 1200</small></div>
+          <div class="door"></div><div class="cursor"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="crosses">
+    <div class="wrap">
+      <h2>Six things cross the edge with your cursor</h2>
+      <p class="lede">Each one travels encrypted, straight between your two computers.</p>
+      <div class="cards">
+        <article class="card"><div class="wire"><i></i></div><h3>Mouse and keyboard</h3><p>Typing follows the cursor, held modifier keys included. Ctrl+Alt+Home always brings it back.</p></article>
+        <article class="card"><div class="wire" style="--d:.4s"><i></i></div><h3>Copied text</h3><p>Copy on one computer and paste on the other straight away, in either direction.</p></article>
+        <article class="card"><div class="wire" style="--pip:2px;--d:.8s"><i></i></div><h3>Files and pictures</h3><p>Copy files, folders or a screenshot, move across, and paste. Or send files from the window.</p></article>
+        <article class="card"><div class="wire" style="--pip:2px;--d:1.2s"><i></i></div><h3>Whatever you are dragging</h3><p>Hold a file, a link or selected text, push through the edge, and keep dragging on the other side.</p></article>
+        <article class="card"><div class="wire" style="--d:1.6s"><i></i></div><h3>Sound</h3><p>Choose one computer's speakers. The others go quiet and play through it instead.</p></article>
+        <article class="card"><div class="wire" style="--d:2s"><i></i></div><h3>Browser pages</h3><p>Push a browser window against the edge and the page it shows opens on the other computer.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="arrange">
+    <div class="wrap split">
+      <div class="app" role="img" aria-label="The layout view: a laptop placed to the right of a desk PC, with the stretch of edge the mouse may cross marked.">
+        <div class="app-bar">Arrangement <span class="state">Saved on both computers</span></div>
+        <div class="stage">
+          <div class="scr me a">Desk PC<small>This computer</small></div>
+          <div class="scr b" style="top:38%;height:40%">Work laptop<small>Drag to move</small></div>
+          <div class="door" style="top:40%;height:28%"></div>
+        </div>
+      </div>
+      <div>
+        <h2>The layout on screen matches the desk in front of you</h2>
+        <p class="lede">Drag each computer to where it really sits. Then choose which stretch of the shared edge lets the mouse through, so corners you use for other things stay yours.</p>
+        <div class="modes">
+          <div><svg width="52" height="36" viewBox="0 0 52 36" aria-hidden="true"><rect x="2" y="5" width="20" height="26" rx="2.5"/><rect x="30" y="5" width="20" height="26" rx="2.5"/><path d="M26 7V29"/></svg><p><b>Whole edge</b><span>Cross anywhere along it.</span></p></div>
+          <div><svg width="52" height="36" viewBox="0 0 52 36" aria-hidden="true"><rect x="2" y="5" width="20" height="26" rx="2.5"/><rect x="30" y="12" width="20" height="19" rx="2.5"/><path d="M26 14V29"/></svg><p><b>Where they touch</b><span>Only where the two screens meet.</span></p></div>
+          <div><svg width="52" height="36" viewBox="0 0 52 36" aria-hidden="true"><rect x="2" y="5" width="20" height="26" rx="2.5"/><rect x="30" y="5" width="20" height="26" rx="2.5"/><path d="M26 7V13"/></svg><p><b>One corner</b><span>Top or bottom; the rest is a wall.</span></p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="private">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">Privacy</p>
+        <h2>Nothing leaves your own network</h2>
+        <p class="lede">There is no account, no cloud relay and no telemetry. Two computers pair once by showing the same six-digit code, which you compare with your own eyes.</p>
+        <dl class="points">
+          <div><dt>Encrypted end to end</dt><dd>Every key press, file and sound packet, with keys that never leave the two computers.</dd></div>
+          <div><dt>Strangers are refused</dt><dd>A computer you have not paired cannot connect, even on the same Wi-Fi.</dd></div>
+          <div><dt>Open source</dt><dd>The whole program is public, so the claims on this page can be checked.</dd></div>
+        </dl>
+      </div>
+      <div class="pair" role="img" aria-label="Both computers showing the same pairing code, 482 913.">
+        <div><small>Desk PC shows</small><span class="code">482 913</span></div>
+        <div><small>Work laptop shows</small><span class="code">482 913</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <h2>Three steps from download to one mouse</h2>
+      <ol class="steps">
+        <li><h3>Put the file on both computers</h3><p>Download ScreenPortals.exe and start it on each. It sits by the clock.</p></li>
+        <li><h3>Press Add a computer on both</h3><p>Check the two codes match, then press Codes match.</p></li>
+        <li><h3>Drag the screens into place</h3><p>From then on they find each other, and update themselves.</p></li>
+      </ol>
+      <div class="actions" style="margin:0 0 40px">
+        <a class="btn primary" data-link="download" href="#start">Download ScreenPortals.exe</a>
+        <a class="btn" data-link="source" href="#start">See the code on GitHub</a>
+      </div>
+      <p class="honest"><b>An early release.</b> Windows only for now. The program is not yet signed, so Windows asks you to confirm the first start, and its firewall asks once to allow it on private networks. Programs running as administrator, and games that lock the mouse, do not accept shared input.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Screen Portals is free software under the MIT licence.</span>
+    <a data-link="source" href="#start">Source code</a>
+    <a data-link="issues" href="#start">Report a problem</a>
+  </div>
+</footer>
+
+<script>
+  // The page is served from <owner>.github.io/<repository>/, which is all
+  // that is needed to point the buttons at that repository's newest release.
+  (() => {
+    const owner = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : '';
+    const repo = location.pathname.split('/').filter(Boolean)[0] || '';
+    if (!owner || !repo) return;
+    const base = `https://github.com/${owner}/${repo}`;
+    const to = { download: `${base}/releases/latest/download/ScreenPortals.exe`, source: base, issues: `${base}/issues` };
+    document.querySelectorAll('[data-link]').forEach(a => { a.href = to[a.dataset.link]; });
+  })();
+</script>
+</body>
+</html>

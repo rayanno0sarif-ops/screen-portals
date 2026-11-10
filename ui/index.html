@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Screen Portals</title>
+<style>
+  /* One system: one ink, one accent, one radius family, two button looks. */
+  :root {
+    --bg: #F5F4F0;
+    --surface: #FFFFFF;
+    --ink: #1C1B18;
+    --muted: #5E5A52;
+    --line: rgba(28, 27, 24, .14);
+    --line-strong: rgba(28, 27, 24, .34);
+    --accent: #0A6B57;
+    --on-accent: #FFFFFF;
+    --accent-soft: rgba(10, 107, 87, .10);
+    --accent-faint: rgba(10, 107, 87, .32);
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+    --r-sm: 8px; --r-md: 12px; --r-lg: 20px;
+    --text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    --ease: cubic-bezier(.2, .7, .2, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141311;
+      --surface: #1E1C19;
+      --ink: #F1EEE8;
+      --muted: #A9A498;
+      --line: rgba(241, 238, 232, .14);
+      --line-strong: rgba(241, 238, 232, .38);
+      --accent: #45D3B0;
+      --on-accent: #0B2A23;
+      --accent-soft: rgba(69, 211, 176, .12);
+      --accent-faint: rgba(69, 211, 176, .36);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 16px/1.5 var(--text);
+    display: grid; grid-template-rows: 64px 1fr; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, p, ol { margin: 0; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- top bar ---- */
+  header {
+    display: flex; align-items: center; gap: var(--s-4);
+    padding: 0 var(--s-5); border-bottom: 1px solid var(--line); background: var(--bg);
+  }
+  .brand { display: flex; align-items: center; gap: var(--s-3); }
+  .brand svg { display: block; }
+  h1 { font: 600 18px/1 var(--display); letter-spacing: -.01em; }
+  #status { margin-left: auto; font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: var(--s-2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); flex: none; }
+  .dot.on { background: var(--accent); }
+
+  /* ---- buttons: one filled, one outlined ---- */
+  .btn {
+    height: 44px; padding: 0 var(--s-5); border-radius: var(--r-sm);
+    border: 1px solid var(--line-strong); background: transparent;
+    font-size: 16px; font-weight: 500; cursor: pointer; white-space: nowrap;
+    transition: transform .16s var(--ease), background-color .16s var(--ease), border-color .16s var(--ease);
+  }
+  .btn:hover { transform: translateY(-1px); border-color: var(--ink); }
+  .btn:active { transform: translateY(0) scale(.98); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover { border-color: var(--accent); filter: brightness(1.08); }
+  .btn.wide { width: 100%; }
+  .link {
+    background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); font-size: 14px;
+    text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px;
+    transition: text-decoration-color .16s var(--ease);
+  }
+  .link:hover { text-decoration-color: var(--ink); }
+
+  /* ---- layout ---- */
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 352px; min-height: 0; }
+  #stage {
+    position: relative; overflow: hidden; min-height: 0; touch-action: none;
+    background-image: radial-gradient(var(--line) 1px, transparent 1.5px); background-size: 24px 24px;
+  }
+  #hint {
+    position: absolute; left: var(--s-5); bottom: var(--s-4); right: var(--s-5);
+    font-size: 14px; color: var(--muted); pointer-events: none;
+  }
+  aside {
+    border-left: 1px solid var(--line); background: var(--surface);
+    padding: var(--s-5); overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-5);
+  }
+  @media (max-width: 820px) {
+    body { overflow: auto; grid-template-rows: 64px auto; }
+    main { grid-template-columns: 1fr; }
+    #stage { height: 56vh; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+
+  /* ---- screens on the stage ---- */
+  .screen {
+    position: absolute; border-radius: var(--r-md); border: 1.5px solid var(--ink); background: var(--surface);
+    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;
+    padding: var(--s-2); text-align: center; overflow: hidden; min-width: 0;
+  }
+  .screen .name { font: 600 16px/1.2 var(--display); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .screen .meta { font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .screen.me { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .screen.me .meta { color: inherit; opacity: .72; }
+  button.screen { cursor: grab; transition: transform .16s var(--ease), border-color .16s var(--ease), background-color .16s var(--ease); }
+  button.screen:hover { transform: translateY(-2px); }
+  button.screen.offline { border-style: dashed; border-color: var(--line-strong); background: var(--bg); }
+  button.screen.offline .name { color: var(--muted); }
+  button.screen.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  button.screen.drag { cursor: grabbing; transform: none; transition: none; z-index: 3; }
+  button.screen.drop { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .ghost {
+    position: absolute; border-radius: var(--r-md); border: 1.5px dashed var(--line-strong);
+    display: grid; place-items: center; color: var(--muted); font-size: 14px;
+  }
+
+  /* ---- the doorway ---- */
+  .door { position: absolute; border-radius: 3px; background: var(--accent); z-index: 2; pointer-events: none; }
+  .door.far { background: var(--accent-faint); z-index: 1; }
+  .spark {
+    position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+    background: var(--accent); z-index: 4; pointer-events: none; opacity: 0;
+    animation: cross .7s var(--ease) 1;
+  }
+  @keyframes cross {
+    0% { opacity: 0; transform: translate(calc(var(--dx) * -26px), calc(var(--dy) * -26px)) scale(.6); }
+    30% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(var(--dx) * 26px), calc(var(--dy) * 26px)) scale(.6); }
+  }
+
+  /* ---- side panel ---- */
+  .label { font-size: 13px; font-weight: 500; color: var(--muted); }
+  h2 { font: 600 24px/1.2 var(--display); letter-spacing: -.015em; overflow-wrap: anywhere; }
+  .group { display: flex; flex-direction: column; gap: var(--s-3); }
+  .head { display: flex; flex-direction: column; gap: var(--s-1); }
+  .line { font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: var(--s-2); }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); font-size: 14px; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; text-align: right; }
+  .mono { font-family: var(--mono); }
+  ol.steps { padding-left: 1.3em; display: flex; flex-direction: column; gap: var(--s-2); }
+  .code { font: 600 44px/1 var(--mono); letter-spacing: .04em; padding: var(--s-4) 0; }
+  .spacer { flex: 1; }
+  .foot { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); }
+
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line-strong); border-radius: var(--r-sm); overflow: hidden; }
+  .seg button {
+    height: 44px; border: 0; border-left: 1px solid var(--line); background: transparent; cursor: pointer;
+    font-size: 14px; font-weight: 500; transition: background-color .16s var(--ease);
+  }
+  .seg button:first-child { border-left: 0; }
+  .seg button:hover { background: var(--accent-soft); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+  .modes { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-md); overflow: hidden; }
+  .mode {
+    display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: var(--s-3);
+    padding: var(--s-3) var(--s-4); border: 0; border-top: 1px solid var(--line); background: transparent;
+    text-align: left; cursor: pointer; min-height: 64px; transition: background-color .16s var(--ease);
+  }
+  .mode:first-child { border-top: 0; }
+  .mode:hover { background: var(--accent-soft); }
+  .mode .t { font-weight: 500; display: block; }
+  .mode .d { font-size: 14px; color: var(--muted); display: block; }
+  .mode svg { display: block; transition: transform .16s var(--ease); }
+  .mode:hover svg { transform: translateX(2px); }
+  .mode[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .mode.plain { grid-template-columns: 1fr; min-height: 44px; }
+  .mode svg .a, .mode svg .b { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+  .mode svg .b { stroke: var(--line-strong); }
+  .mode svg .d { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
+
+  /* ---- files and pictures on the move ---- */
+  .note { font-size: 14px; color: var(--muted); }
+  .xfers { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-md); overflow: hidden; }
+  .xfer {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-3); align-items: baseline;
+    padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line);
+  }
+  .xfer:first-child { border-top: 0; }
+  .xfer .n { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .xfer .z { font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .xfer .s { grid-column: 1 / -1; font-size: 14px; color: var(--muted); display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-3); }
+  .xfer .s > span { min-width: 0; }
+  .xfer .s .link { flex: none; white-space: nowrap; }
+  .xfer.stuck .s > span { color: var(--ink); }
+  .xfer .bar { grid-column: 1 / -1; height: 4px; margin-top: var(--s-1); border-radius: 2px; background: var(--line); overflow: hidden; }
+  .xfer .bar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width .3s var(--ease); }
+
+  .pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; flex: none; }
+  @keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .spark { display: none; }
+    .pulse { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg width="28" height="20" viewBox="0 0 28 20" aria-hidden="true">
+      <rect x="1" y="2" width="11" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="16" y="2" width="11" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M14 5v10" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <h1>Screen Portals</h1>
+  </div>
+  <div id="status" role="status" aria-live="polite"></div>
+  <span id="top-action"></span>
+</header>
+<main>
+  <section id="stage" aria-label="Arrangement of your screens">
+    <p id="hint"></p>
+  </section>
+  <aside id="panel" aria-label="Details"></aside>
+</main>
+<input type="file" id="pick" multiple hidden>
+
+<script>
+(() => {
+  'use strict';
+  const token = location.hash.slice(1);
+  history.replaceState(null, '', location.pathname);
+
+  const stage = document.getElementById('stage');
+  const hint = document.getElementById('hint');
+  const panel = document.getElementById('panel');
+  const statusEl = document.getElementById('status');
+  const topAction = document.getElementById('top-action');
+
+  const CORNER = 0.25, MIN_TOUCH = 80, FALLBACK = [1920, 1080];
+  let S = null;            // last state from the engine
+  let sel = null;          // selected computer's key
+  let drag = null;         // { key, grabX, grabY, moved }
+  let forgetting = false;  // asking to confirm "forget"
+  let panelSig = '';
+  let doorSig = {};
+  let lost = false;
+  let saveTimer = 0;
+  let dropKey = null;      // computer that dragged files are hovering over
+  let notice = '';         // one line about the last attempt to send files
+  let fastTimer = 0;
+  const pick = document.getElementById('pick');
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const horizontal = side => side === 'above' || side === 'below';
+  const size = p => p.screen || FALLBACK;
+  const peer = key => S && S.peers.find(p => p.key === key);
+
+  async function call(path, body) {
+    const res = await fetch(path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'X-Portal-Token': token, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'request failed');
+    return res.json();
+  }
+
+  function adopt(next) {
+    const hadKeys = S ? new Set(S.peers.map(p => p.key)) : null;
+    // Keep what the user is dragging; the engine has not heard about it yet.
+    if (drag && S) {
+      const mine = peer(drag.key), theirs = next.peers.find(p => p.key === drag.key);
+      if (mine && theirs) { theirs.side = mine.side; theirs.offset = mine.offset; }
+    }
+    S = next;
+    lost = false;
+    if (sel && !peer(sel)) { sel = null; forgetting = false; }
+    if (hadKeys) {
+      const fresh = S.peers.find(p => !hadKeys.has(p.key));
+      if (fresh) { sel = fresh.key; forgetting = false; }
+    }
+    render();
+    // Look again sooner while something is on the move, so progress is smooth.
+    if (S.transfers.some(t => t.state === 'active') && !fastTimer) {
+      fastTimer = setTimeout(() => { fastTimer = 0; if (!drag) poll(); }, 400);
+    }
+  }
+
+  async function poll() {
+    try { adopt(await call('/api/state')); }
+    catch (e) { lost = true; renderStatus(); }
+  }
+
+  async function act(path, body) {
+    try { adopt(await call(path, body)); }
+    catch (e) { poll(); }
+    // Pairing and connecting finish a moment after the call returns.
+    setTimeout(() => { if (!drag) poll(); }, 350);
+  }
+
+  // ---------- geometry (mirrors the engine's rules) ----------
+
+  function edgeLens(p) {
+    const [W, H] = S.screen, [pw, ph] = size(p);
+    return horizontal(p.side) ? [W, pw] : [H, ph];
+  }
+
+  function clampOffset(p, offset) {
+    const [lm, lp] = edgeLens(p);
+    const need = Math.min(MIN_TOUCH, lm, lp);
+    return Math.max(need - lp, Math.min(lm - need, Math.round(offset)));
+  }
+
+  function door(p) {
+    const [lm, lp] = edgeLens(p);
+    const c = CORNER * Math.min(lm, lp);
+    if (p.mode === 'edge') return { local: [0, 1], remote: [0, 1] };
+    if (p.mode === 'start') return { local: [0, c / lm], remote: [0, c / lp] };
+    if (p.mode === 'end') return { local: [1 - c / lm, 1], remote: [1 - c / lp, 1] };
+    const a = Math.max(0, p.offset), b = Math.min(lm, p.offset + lp);
+    if (b - a < 1) return null;
+    return { local: [a / lm, b / lm], remote: [(a - p.offset) / lp, (b - p.offset) / lp] };
+  }
+
+  function rectOf(p) {
+    const [W, H] = S.screen, [w, h] = size(p);
+    if (p.side === 'right') return { x: W, y: p.offset, w, h };
+    if (p.side === 'left') return { x: -w, y: p.offset, w, h };
+    if (p.side === 'above') return { x: p.offset, y: -h, w, h };
+    return { x: p.offset, y: H, w, h };
+  }
+
+  function view() {
+    const [W, H] = S.screen;
+    let mw = W * .6, mh = H * .6;
+    S.peers.forEach(p => { const [w, h] = size(p); mw = Math.max(mw, w); mh = Math.max(mh, h); });
+    const box = stage.getBoundingClientRect(), pad = 40;
+    const scale = Math.max(.01, Math.min((box.width - 2 * pad) / (W + 2 * mw), (box.height - 2 * pad - 24) / (H + 2 * mh)));
+    return { scale, ox: box.width / 2 - W * scale / 2, oy: (box.height - 24) / 2 - H * scale / 2, box };
+  }
+
+  // ---------- stage ----------
+
+  function place(el, v, r) {
+    el.style.left = (v.ox + r.x * v.scale) + 'px';
+    el.style.top = (v.oy + r.y * v.scale) + 'px';
+    el.style.width = (r.w * v.scale) + 'px';
+    el.style.height = (r.h * v.scale) + 'px';
+  }
+
+  function keyed(cls, key, make) {
+    let el = stage.querySelector(`.${cls}[data-key="${key}"]`);
+    if (!el) { el = make(); el.dataset.key = key; el.classList.add(cls); stage.appendChild(el); }
+    el.dataset.seen = '1';
+    return el;
+  }
+
+  function doorRect(p, r, mine) {
+    const d = door(p);
+    if (!d) return null;
+    const [W, H] = S.screen, t = 6;
+    const [a, b] = mine ? d.local : d.remote;
+    if (horizontal(p.side)) {
+      const y = p.side === 'above' ? 0 : H;
+      const x0 = mine ? a * W : r.x + a * r.w, x1 = mine ? b * W : r.x + b * r.w;
+      return { x: x0, y, w: x1 - x0, h: 0, thick: t, horiz: true, out: p.side === 'above' ? -1 : 1 };
+    }
+    const x = p.side === 'left' ? 0 : W;
+    const y0 = mine ? a * H : r.y + a * r.h, y1 = mine ? b * H : r.y + b * r.h;
+    return { x, y: y0, w: 0, h: y1 - y0, thick: t, horiz: false, out: p.side === 'left' ? -1 : 1 };
+  }
+
+  function placeDoor(el, v, d, mine) {
+    // Our stretch sits just inside our edge, theirs just inside their edge.
+    const shift = (mine ? -d.out : d.out) * (d.thick / 2 + 1) - d.thick / 2;
+    if (d.horiz) {
+      el.style.left = (v.ox + d.x * v.scale) + 'px'; el.style.width = (d.w * v.scale) + 'px';
+      el.style.top = (v.oy + d.y * v.scale + shift) + 'px'; el.style.height = d.thick + 'px';
+    } else {
+      el.style.top = (v.oy + d.y * v.scale) + 'px'; el.style.height = (d.h * v.scale) + 'px';
+      el.style.left = (v.ox + d.x * v.scale + shift) + 'px'; el.style.width = d.thick + 'px';
+    }
+  }
+
+  function spark(v, d) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const el = document.createElement('div');
+    el.className = 'spark';
+    el.style.left = (v.ox + (d.x + d.w / 2) * v.scale) + 'px';
+    el.style.top = (v.oy + (d.y + d.h / 2) * v.scale) + 'px';
+    el.style.setProperty('--dx', d.horiz ? 0 : d.out);
+    el.style.setProperty('--dy', d.horiz ? d.out : 0);
+    el.addEventListener('animationend', () => el.remove());
+    stage.appendChild(el);
+  }
+
+  function renderStage() {
+    const v = view(), [W, H] = S.screen;
+    stage.querySelectorAll('[data-key]').forEach(el => delete el.dataset.seen);
+
+    const me = keyed('me', 'me', () => { const el = document.createElement('div'); el.className = 'screen'; return el; });
+    me.innerHTML = `<span class="name">${esc(S.name)}</span><span class="meta">This computer</span>`;
+    place(me, v, { x: 0, y: 0, w: W, h: H });
+
+    if (!S.peers.length) {
+      const g = keyed('ghost', 'ghost', () => document.createElement('div'));
+      g.textContent = 'Second computer';
+      place(g, v, { x: W + 12 / v.scale, y: H * .2, w: W * .6, h: H * .6 });
+    }
+
+    S.peers.forEach(p => {
+      const r = rectOf(p);
+      const el = keyed('peer', p.key, () => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'screen';
+        b.addEventListener('pointerdown', e => startDrag(e, b.dataset.key));
+        b.addEventListener('keydown', e => nudge(e, b.dataset.key));
+        return b;
+      });
+      el.classList.toggle('offline', !p.connected);
+      el.classList.toggle('sel', p.key === sel);
+      el.classList.toggle('drag', !!drag && drag.key === p.key);
+      el.classList.toggle('drop', p.key === dropKey);
+      const [w, h] = size(p);
+      el.innerHTML = `<span class="name">${esc(p.name)}</span><span class="meta">${p.connected ? `${w} × ${h}` : 'Offline'}</span>`;
+      el.setAttribute('aria-label', `${p.name}, ${words(p.side)} this computer, ${p.connected ? 'connected' : 'offline'}. Arrow keys slide it along the edge.`);
+      el.setAttribute('aria-pressed', p.key === sel);
+      place(el, v, r);
+
+      const near = doorRect(p, r, true), far = doorRect(p, r, false);
+      if (near && far) {
+        placeDoor(keyed('far', p.key, () => { const d = document.createElement('div'); d.className = 'door'; return d; }), v, far, false);
+        placeDoor(keyed('near', p.key, () => { const d = document.createElement('div'); d.className = 'door'; return d; }), v, near, true);
+        const sig = [p.side, p.mode, p.offset].join('|');
+        if (doorSig[p.key] !== undefined && doorSig[p.key] !== sig && !drag) spark(v, near);
+        if (!drag) doorSig[p.key] = sig;
+      }
+    });
+
+    stage.querySelectorAll('[data-key]:not([data-seen])').forEach(el => el.remove());
+    hint.textContent = S.peers.length
+      ? 'Drag a computer to where it sits on your desk. The mouse crosses at the marked edge. Drop files on a computer to send them.'
+      : '';
+  }
+
+  // ---------- sending files ----------
+
+  const fmt = n => {
+    if (n < 1024) return `${n} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = n / 1024, i = 0;
+    while (v >= 1024 && i < 3) { v /= 1024; i++; }
+    return `${v >= 10 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '')} ${units[i]}`;
+  };
+
+  async function sendFiles(key, files, folders) {
+    const p = peer(key);
+    if (!p) return;
+    notice = !p.connected ? `${p.name} is offline, so nothing was sent.`
+      : folders ? 'Folders cannot be dropped here. Copy the folder, move the mouse across and paste it there.' : '';
+    render();
+    if (!p.connected) return;
+    for (const file of files) {
+      try {
+        await fetch('/api/send', {
+          method: 'POST',
+          headers: {
+            'X-Portal-Token': token, 'X-Portal-Peer': key,
+            'X-Portal-File': encodeURIComponent(file.name), 'Content-Type': 'application/octet-stream',
+          },
+          body: file,
+        });
+      } catch (e) { /* the list of transfers says what happened */ }
+      poll();
+    }
+  }
+
+  const carriesFiles = e => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+
+  function hover(key) {
+    if (key === dropKey) return;
+    dropKey = key;
+    stage.querySelectorAll('button.screen').forEach(el => el.classList.toggle('drop', el.dataset.key === dropKey));
+  }
+
+  // Files dragged in from the desktop: only a connected computer accepts
+  // them, and the page itself never navigates to a dropped file.
+  addEventListener('dragover', e => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    const el = e.target.closest ? e.target.closest('button.screen:not(.offline)') : null;
+    e.dataTransfer.dropEffect = el ? 'copy' : 'none';
+    hover(el ? el.dataset.key : null);
+  });
+  addEventListener('dragleave', e => { if (!e.relatedTarget) hover(null); });
+  addEventListener('drop', e => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    const key = dropKey;
+    hover(null);
+    if (!key) return;
+    const files = [];
+    let folders = 0;
+    for (const item of e.dataTransfer.items) {
+      if (item.kind !== 'file') continue;
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      if (entry && entry.isDirectory) { folders++; continue; }
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+    sel = key; forgetting = false;
+    sendFiles(key, files, folders);
+  });
+
+  pick.addEventListener('change', () => {
+    const files = Array.from(pick.files);
+    pick.value = '';
+    if (sel && files.length) sendFiles(sel, files, 0);
+  });
+
+  function transferTitle(t) {
+    if (t.kind === 'image') return 'Picture';
+    return t.files > 1 ? `${t.label} and ${t.files - 1} more` : t.label;
+  }
+
+  function transferState(t) {
+    const who = `${t.incoming ? 'From' : 'To'} ${t.peer}`;
+    if (t.state === 'active') {
+      const pct = t.bytes ? Math.floor(100 * t.done / t.bytes) : 0;
+      return `${who} · ${t.incoming ? 'Receiving' : 'Sending'} ${pct}%`;
+    }
+    if (t.state === 'done') {
+      if (t.note) return `${who} · ${t.note}`;
+      if (t.kind === 'sent') return `${who} · ${t.incoming ? 'Saved' : 'Sent'}`;
+      return `${who} · ${t.incoming ? 'Ready to paste' : 'Ready to paste there'}`;
+    }
+    if (t.state === 'cancelled') return `${who} · ${t.note || 'Cancelled'}`;
+    return `${who} · ${t.note || 'Did not arrive'}`;
+  }
+
+  function transfersHtml(list, title) {
+    if (!list.length) return '';
+    return `<div class="group"><span class="label">${title}</span><div class="xfers">${list.map(t => {
+      const active = t.state === 'active';
+      const stuck = t.state === 'failed' || t.state === 'skipped';
+      const action = active ? `<button class="link" data-act="cancel" data-id="${t.id}">Cancel</button>`
+        : t.can_reveal ? `<button class="link" data-act="reveal" data-id="${t.id}">Show in folder</button>` : '';
+      const pct = t.bytes ? Math.min(100, 100 * t.done / t.bytes) : 0;
+      return `<div class="xfer${stuck ? ' stuck' : ''}">
+        <span class="n" title="${esc(transferTitle(t))}">${esc(transferTitle(t))}</span>
+        <span class="z">${t.bytes ? fmt(t.bytes) : ''}</span>
+        <span class="s"><span>${esc(transferState(t))}</span>${action}</span>
+        ${active ? `<span class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${pct.toFixed(1)}%"></i></span>` : ''}
+      </div>`;
+    }).join('')}</div></div>`;
+  }
+
+  // ---------- dragging ----------
+
+  function world(e, v) {
+    return { x: (e.clientX - v.box.left - v.ox) / v.scale, y: (e.clientY - v.box.top - v.oy) / v.scale };
+  }
+
+  function startDrag(e, key) {
+    if (e.button !== 0) return;
+    const p = peer(key), v = view(), r = rectOf(p), at = world(e, v);
+    drag = { key, grabX: at.x - r.x, grabY: at.y - r.y, moved: false, startX: e.clientX, startY: e.clientY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.currentTarget.addEventListener('pointermove', moveDrag);
+    e.currentTarget.addEventListener('pointerup', endDrag, { once: true });
+    e.currentTarget.addEventListener('pointercancel', endDrag, { once: true });
+    if (sel !== key) { sel = key; forgetting = false; render(); }
+  }
+
+  function moveDrag(e) {
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 4) return;
+    drag.moved = true;
+    const p = peer(drag.key), v = view(), [W, H] = S.screen, [w, h] = size(p), at = world(e, v);
+    const left = at.x - drag.grabX, top = at.y - drag.grabY;
+    const nx = (left + w / 2 - W / 2) / (W / 2 + w / 2), ny = (top + h / 2 - H / 2) / (H / 2 + h / 2);
+    p.side = Math.abs(nx) >= Math.abs(ny) ? (nx >= 0 ? 'right' : 'left') : (ny >= 0 ? 'below' : 'above');
+    const [lm, lp] = edgeLens(p);
+    let offset = horizontal(p.side) ? left : top;
+    const snap = 14 / v.scale;
+    for (const target of [0, lm - lp, (lm - lp) / 2]) if (Math.abs(offset - target) < snap) offset = target;
+    p.offset = clampOffset(p, offset);
+    renderStage();
+  }
+
+  function endDrag(e) {
+    e.currentTarget.removeEventListener('pointermove', moveDrag);
+    const done = drag;
+    drag = null;
+    if (done && done.moved) { save(done.key); } else { render(); }
+  }
+
+  function nudge(e, key) {
+    const p = peer(key);
+    const along = horizontal(p.side) ? { ArrowLeft: -1, ArrowRight: 1 } : { ArrowUp: -1, ArrowDown: 1 };
+    const dir = along[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    p.offset = clampOffset(p, p.offset + dir * (e.shiftKey ? 200 : 40));
+    sel = key;
+    render();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => save(key), 300);
+  }
+
+  function save(key) {
+    const p = peer(key);
+    if (!p) return;
+    render();
+    act('/api/layout', { key, side: p.side, offset: p.offset, mode: p.mode });
+  }
+
+  stage.addEventListener('pointerdown', e => {
+    if (e.target === stage && sel) { sel = null; forgetting = false; render(); }
+  });
+
+  // ---------- side panel ----------
+
+  const words = side => ({ left: 'left of', right: 'right of', above: 'above', below: 'below' }[side]);
+
+  function glyph(side, mode) {
+    // Two screens and the stretch of edge between them that lets the mouse through.
+    const h = horizontal(side);
+    const a = h ? '<rect class="a" x="8" y="2" width="28" height="12" rx="2.5"/>' : '<rect class="a" x="2" y="5" width="20" height="26" rx="2.5"/>';
+    const b = h ? '<rect class="b" x="8" y="22" width="28" height="12" rx="2.5"/>' : '<rect class="b" x="30" y="5" width="20" height="26" rx="2.5"/>';
+    const span = { edge: [0, 1], touching: [.3, 1], start: [0, .3], end: [.7, 1] }[mode];
+    const d = h
+      ? `<path class="d" d="M${10 + span[0] * 24} 18H${10 + span[1] * 24}"/>`
+      : `<path class="d" d="M26 ${7 + span[0] * 22}V${7 + span[1] * 22}"/>`;
+    return `<svg width="52" height="36" viewBox="0 0 52 36" aria-hidden="true">${a}${b}${d}</svg>`;
+  }
+
+  function modeList(p) {
+    const h = horizontal(p.side);
+    const options = [
+      ['edge', 'Whole edge', 'Cross anywhere along this edge.'],
+      ['touching', 'Where they touch', 'Cross only where the two screens meet.'],
+      ['start', h ? 'Left corner' : 'Top corner', `Cross only near the ${h ? 'left' : 'top'} corner.`],
+      ['end', h ? 'Right corner' : 'Bottom corner', `Cross only near the ${h ? 'right' : 'bottom'} corner.`],
+    ];
+    return `<div class="modes" role="radiogroup" aria-label="Where the mouse crosses">${options.map(([id, t, d]) =>
+      `<button type="button" class="mode" role="radio" aria-checked="${p.mode === id}" data-mode="${id}">
+        ${glyph(p.side, id)}<span><span class="t">${t}</span><span class="d">${d}</span></span>
+      </button>`).join('')}</div>`;
+  }
+
+  // Which computer's speakers play everything.
+  function soundHtml() {
+    const chosen = S.speakers ? (S.speakers === S.id ? S.name : (peer(S.speakers) || {}).name || 'the chosen computer') : '';
+    const options = [['', 'Each computer', ''], [S.id, esc(S.name), 'This computer']]
+      .concat(S.peers.map(p => [p.key, esc(p.name), p.connected ? '' : 'Offline']));
+    const note = S.sound === 'sending' ? `This computer is muted. Its sound is playing on ${esc(chosen)}.`
+      : S.sound === 'waiting' ? `${esc(chosen)} cannot be reached, so sound plays here for now.`
+      : S.speakers === S.id ? 'Sound from your other computers plays here.' : '';
+    return `<div class="group"><span class="label" id="l-sound">Sound comes out of</span>
+      <div class="modes" role="radiogroup" aria-labelledby="l-sound">${options.map(([key, t, d]) =>
+        `<button type="button" class="mode plain" role="radio" aria-checked="${(S.speakers || '') === key}" data-speaker="${key}">
+          <span><span class="t">${t}</span>${d ? `<span class="d">${d}</span>` : ''}</span></button>`).join('')}</div>
+      ${note ? `<p class="note">${note}</p>` : ''}</div>`;
+  }
+
+  function panelHtml() {
+    if (S.prompt) {
+      const code = S.prompt.code.replace(/^(\d{3})(\d{3})$/, '$1 $2');
+      return `<div class="head"><span class="label">Pairing</span><h2>${esc(S.prompt.name)}</h2></div>
+        <div class="group"><p>Check that ${esc(S.prompt.name)} shows this same code.</p>
+        <div class="code" aria-label="Pairing code ${esc(code)}">${esc(code)}</div></div>
+        <div class="group"><button class="btn primary wide" data-act="accept">Codes match</button>
+        <button class="btn wide" data-act="reject">Cancel pairing</button></div>`;
+    }
+    if (S.pairing) {
+      return `<div class="head"><span class="label">Pairing</span><h2>Looking for a computer</h2></div>
+        <div class="group"><p class="line"><span class="pulse"></span>Searching your network</p>
+        <p>Press Add a computer on the other one too. Both need to be on the same network.</p></div>
+        <div class="group"><button class="btn wide" data-act="stop">Stop looking</button></div>`;
+    }
+    const p = sel && peer(sel);
+    if (p) {
+      const [w, h] = size(p);
+      const sides = ['left', 'right', 'above', 'below'].map(s =>
+        `<button type="button" aria-pressed="${p.side === s}" data-side="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('');
+      const state = p.connected
+        ? `<span class="dot on"></span>Connected${p.fast_pointer ? '' : ', pointer on slow path'}`
+        : '<span class="dot"></span>Offline';
+      const forget = forgetting
+        ? `<p>${esc(p.name)} will need pairing again before it can connect.</p>
+           <button class="btn primary wide" data-act="forget-yes">Forget ${esc(p.name)}</button>
+           <button class="btn wide" data-act="forget-no">Keep ${esc(p.name)}</button>`
+        : `<button class="btn wide" data-act="forget">Forget ${esc(p.name)}</button>`;
+      const send = p.connected
+        ? `<div class="group"><button class="btn primary wide" data-act="send">Send files</button>
+           <p class="note">${notice ? esc(notice) : 'Or drop files on its screen. Copied files and pictures follow the mouse across.'}</p></div>`
+        : (notice ? `<p class="note">${esc(notice)}</p>` : '');
+      const theirs = transfersHtml(S.transfers.filter(t => t.peer_key === p.key).slice(0, 3), 'Files and pictures');
+      return `<div class="head"><span class="label">Paired computer</span><h2>${esc(p.name)}</h2>
+          <p class="line">${state}</p></div>
+        ${send}${theirs}
+        <div class="group"><span class="label" id="l-side">Where ${esc(p.name)} sits</span>
+          <div class="seg" role="group" aria-labelledby="l-side">${sides}</div></div>
+        <div class="group"><span class="label">Where the mouse crosses</span>${modeList(p)}</div>
+        <dl class="facts"><dt>Screen</dt><dd>${w} × ${h}</dd></dl>
+        <div class="spacer"></div><div class="group">${forget}</div>`;
+    }
+    if (!S.peers.length) {
+      return `<div class="head"><span class="label">This computer</span><h2>Add your second computer</h2></div>
+        <ol class="steps"><li>Start Screen Portals on the other computer.</li>
+        <li>Press Add a computer on both.</li><li>Check that both show the same code.</li></ol>
+        ${S.can_pair ? '<button class="btn primary wide" data-act="pair">Add a computer</button>' : ''}
+        <div class="spacer"></div>${footHtml()}`;
+    }
+    return `<div class="head"><span class="label">This computer</span><h2>${esc(S.name)}</h2></div>
+      <div class="group"><p>Push the mouse through a marked edge to move to that computer. Ctrl+Alt+Home brings it back.</p>
+        <p class="note">Copied text is shared at once. Copied files and pictures follow the mouse across.</p></div>
+      ${soundHtml()}
+      ${transfersHtml(S.transfers.slice(0, 4), 'Files and pictures')}
+      <dl class="facts"><dt>Screen</dt><dd>${S.screen[0]} × ${S.screen[1]}</dd>
+        <dt>Key</dt><dd class="mono">${esc(S.key)}</dd>
+        <dt>Version</dt><dd>${esc(S.version || '')}</dd></dl>
+      <div class="group"><button class="btn wide" data-act="pause">${S.paused ? 'Resume sharing' : 'Pause sharing'}</button></div>
+      <div class="spacer"></div>${footHtml()}`;
+  }
+
+  const footHtml = () => '<div class="foot"><button class="link" data-act="quit">Quit Screen Portals</button></div>';
+
+  function renderPanel() {
+    const html = panelHtml();
+    if (html === panelSig) return;
+    const focused = document.activeElement && panel.contains(document.activeElement)
+      ? (document.activeElement.dataset.act || document.activeElement.dataset.mode || document.activeElement.dataset.side) : null;
+    const speakerFocus = document.activeElement && panel.contains(document.activeElement) ? document.activeElement.dataset.speaker : undefined;
+    panelSig = html;
+    panel.innerHTML = html;
+    if (focused) {
+      const again = panel.querySelector(`[data-act="${focused}"],[data-mode="${focused}"],[data-side="${focused}"]`);
+      if (again) again.focus();
+    }
+    if (speakerFocus !== undefined) {
+      const again = panel.querySelector(`[data-speaker="${speakerFocus}"]`);
+      if (again) again.focus();
+    }
+  }
+
+  panel.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || !S) return;
+    const p = sel && peer(sel);
+    if (b.dataset.speaker !== undefined) { act('/api/speakers', { key: b.dataset.speaker || null }); return; }
+    if (b.dataset.mode && p) { p.mode = b.dataset.mode; save(p.key); return; }
+    if (b.dataset.side && p) { p.side = b.dataset.side; p.offset = clampOffset(p, p.offset); save(p.key); return; }
+    switch (b.dataset.act) {
+      case 'pair': act('/api/pairing', { on: true }); break;
+      case 'stop': act('/api/pairing', { on: false }); break;
+      case 'accept': act('/api/pairing/answer', { on: true }); break;
+      case 'reject': act('/api/pairing/answer', { on: false }); break;
+      case 'pause': act('/api/pause', { on: !S.paused }); break;
+      case 'forget': forgetting = true; render(); break;
+      case 'forget-no': forgetting = false; render(); break;
+      case 'forget-yes': forgetting = false; act('/api/forget', { key: sel }); break;
+      case 'send': pick.click(); break;
+      case 'cancel': act('/api/transfer/cancel', { id: Number(b.dataset.id) }); break;
+      case 'reveal': act('/api/transfer/reveal', { id: Number(b.dataset.id) }); break;
+      case 'quit': call('/api/quit', {}).catch(() => {}); lost = true; renderStatus(); break;
+    }
+  });
+
+  topAction.addEventListener('click', e => {
+    if (e.target.closest('button')) { sel = null; act('/api/pairing', { on: true }); }
+  });
+
+  // ---------- status ----------
+
+  function renderStatus() {
+    if (lost || !S) {
+      statusEl.innerHTML = '<span class="dot"></span>Screen Portals is not running';
+      return;
+    }
+    const up = S.peers.filter(p => p.connected);
+    let on = up.length > 0 && !S.paused, text;
+    if (S.controlling) text = `Cursor is on ${esc(S.controlling)}`;
+    else if (S.paused) text = 'Sharing is paused';
+    else if (up.length === 1) text = `Connected to ${esc(up[0].name)}`;
+    else if (up.length > 1) text = `Connected to ${up.length} computers`;
+    else if (S.peers.length === 1) text = `Waiting for ${esc(S.peers[0].name)}`;
+    else if (S.peers.length) text = 'Waiting for your computers';
+    else text = 'No computers paired';
+    statusEl.innerHTML = `<span class="dot${on ? ' on' : ''}"></span>${text}`;
+    const showAdd = S.can_pair && S.peers.length > 0 && !S.pairing && !S.prompt;
+    const want = showAdd ? '<button class="btn">Add a computer</button>' : '';
+    if (topAction.innerHTML !== want) topAction.innerHTML = want;
+  }
+
+  function render() {
+    if (!S) return;
+    renderStatus();
+    renderStage();
+    renderPanel();
+  }
+
+  addEventListener('resize', () => S && renderStage());
+  poll();
+  setInterval(() => { if (!drag) poll(); }, 1000);
+})();
+</script>
+</body>
+</html>

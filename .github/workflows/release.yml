@@ -1,0 +1,65 @@
+# Every change that reaches the main branch is tested, built and published
+# as a release. Installed copies of Screen Portals look at the newest
+# release and update themselves (see src/update.rs), so pushing to main is
+# all it takes to update every computer.
+#
+# Pull requests are only tested; nothing is published from them.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write # needed to create the release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: cargo test --locked
+
+      # The build number is this workflow's run number: it only ever goes
+      # up, which is how an installed copy knows a release is newer.
+      # (Renaming this workflow file would start the count again from 1,
+      # and installed copies would then ignore the lower numbers.)
+      - name: Build
+        if: github.event_name == 'push'
+        env:
+          SCREEN_PORTALS_BUILD: ${{ github.run_number }}
+          SCREEN_PORTALS_REPO: ${{ github.repository }}
+        run: cargo build --release --locked
+
+      # latest.json tells installed copies what the newest build is and
+      # what the program file must hash to once downloaded.
+      - name: Describe the build
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item target/release/ScreenPortals.exe, target/release/screen-portals.exe out/
+          $program = Get-Item out/ScreenPortals.exe
+          $hash = (Get-FileHash $program -Algorithm SHA256).Hash.ToLower()
+          $json = '{"build":${{ github.run_number }},"sha256":"' + $hash + '","size":' + $program.Length + '}'
+          [IO.File]::WriteAllText("$PWD/out/latest.json", $json)
+          Get-Content out/latest.json
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: >
+          gh release create "build-${{ github.run_number }}"
+          out/ScreenPortals.exe out/screen-portals.exe out/latest.json
+          --title "Build ${{ github.run_number }}"
+          --notes "Built from ${{ github.sha }}. Installed copies update to this by themselves."
+          --latest

@@ -1,0 +1,15 @@
+# Build output. Finished programs are published as GitHub releases instead.
+/target/
+/dist/
+/dist-sound/
+
+# Left behind by an update that was interrupted.
+*.exe.old
+*.exe.new
+
+# Design-skill working files and editor clutter.
+.taste-skill/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
