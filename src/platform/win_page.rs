@@ -92,6 +92,16 @@ pub fn page_of(window: HWND) -> Option<String> {
     wait.recv_timeout(Duration::from_millis(800)).ok().flatten()
 }
 
+/// True if the user is moving a browser window by its title bar right now.
+/// Quick: it does not ask the browser anything.
+pub fn browser_being_moved() -> bool {
+    unsafe {
+        let mut info: GUITHREADINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+        GetGUIThreadInfo(0, &mut info) != 0 && info.flags & GUI_INMOVESIZE != 0 && is_browser(info.hwndMoveSize)
+    }
+}
+
 /// If the user is moving a browser window by its title bar right now, the
 /// page it shows.
 pub fn page_being_moved() -> Option<String> {

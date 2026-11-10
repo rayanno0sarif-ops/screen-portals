@@ -181,18 +181,19 @@ fn doctor(args: Args) -> Result<(), String> {
         }
     }
     if args.positional.iter().any(|p| p == "drag") {
+        // Reading only: nothing is opened, clicked or changed for this one.
+        let (browsers, page) = screen_portals::platform::win_page::survey();
+        match (browsers, page) {
+            (0, _) => println!("Browser pages     no browser window is open to try"),
+            (n, Some(_)) => println!("Browser pages     ok (read the page of one of {n} browser windows)"),
+            (n, None) => println!("Browser pages     could not read a page from {n} browser windows"),
+        }
         match screen_portals::platform::win_drag::self_test() {
             Ok(detail) => println!("Dragging          ok ({detail})"),
             Err(problem) => {
                 println!("Dragging          FAILED");
                 return Err(problem);
             }
-        }
-        let (browsers, page) = screen_portals::platform::win_page::survey();
-        match (browsers, page) {
-            (0, _) => println!("Browser pages     no browser window is open to try"),
-            (n, Some(_)) => println!("Browser pages     ok (read the page of one of {n} browser windows)"),
-            (n, None) => println!("Browser pages     could not read a page from {n} browser windows"),
         }
     }
     if d.mouse_hook && d.keyboard_hook {

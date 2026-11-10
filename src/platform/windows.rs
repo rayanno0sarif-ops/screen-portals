@@ -215,6 +215,11 @@ impl Platform for WinPlatform {
     }
 
     fn inject_button(&self, button: u8, down: bool) {
+        // A drag that was about to start here is called off instead if its
+        // button is released first; see `win_drag::release_before_press`.
+        if button == BUTTON_LEFT && !down && super::win_drag::release_before_press() {
+            return;
+        }
         let pick = |d: u32, u: u32| if down { d } else { u };
         match button {
             BUTTON_LEFT => send_mouse(0, 0, 0, pick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)),
@@ -1284,6 +1289,8 @@ pub fn run(node: Arc<Node>) -> Result<(), String> {
             return Err("could not create the message window".into());
         }
         WINDOW.store(window, Ordering::Relaxed);
+        // Ready before the hooks can ask for it.
+        super::win_drag::start();
         if AddClipboardFormatListener(window) == 0 {
             eprintln!("[screen-portals] clipboard sharing is unavailable on this session");
         }
