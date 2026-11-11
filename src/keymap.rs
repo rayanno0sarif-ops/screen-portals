@@ -1,6 +1,6 @@
-//! Translation between Windows keyboard scan codes and USB HID usage codes.
-//! HID usages are what travels on the wire, so each platform only needs a
-//! table to and from its own native codes.
+//! Translation between each system's own key codes (Windows scan codes,
+//! Linux key codes) and USB HID usage codes. HID usages are what travels on
+//! the wire, so each platform only needs a table to and from its own codes.
 
 /// (scan code, extended flag, HID usage) for PC "set 1" scan codes.
 const TABLE: &[(u8, bool, u16)] = &[
@@ -103,6 +103,68 @@ pub fn to_windows(hid: u16) -> Option<(u16, bool)> {
     TABLE.iter().find(|(_, _, h)| *h == hid).map(|(scan, ext, _)| (*scan as u16, *ext))
 }
 
+/// (Linux key code, HID usage). The Linux numbers are the `KEY_*` values of
+/// the kernel's `input-event-codes.h`; an X server reports them plus 8.
+const LINUX: &[(u16, u16)] = &[
+    (1, 0x29), // Escape
+    (2, 0x1E), (3, 0x1F), (4, 0x20), (5, 0x21), (6, 0x22), // 1 2 3 4 5
+    (7, 0x23), (8, 0x24), (9, 0x25), (10, 0x26), (11, 0x27), // 6 7 8 9 0
+    (12, 0x2D), (13, 0x2E), // - =
+    (14, 0x2A), (15, 0x2B), // Backspace Tab
+    (16, 0x14), (17, 0x1A), (18, 0x08), (19, 0x15), (20, 0x17), // Q W E R T
+    (21, 0x1C), (22, 0x18), (23, 0x0C), (24, 0x12), (25, 0x13), // Y U I O P
+    (26, 0x2F), (27, 0x30), // [ ]
+    (28, 0x28), // Enter
+    (29, 0xE0), // Left Ctrl
+    (30, 0x04), (31, 0x16), (32, 0x07), (33, 0x09), (34, 0x0A), // A S D F G
+    (35, 0x0B), (36, 0x0D), (37, 0x0E), (38, 0x0F), // H J K L
+    (39, 0x33), (40, 0x34), (41, 0x35), // ; ' `
+    (42, 0xE1), // Left Shift
+    (43, 0x31), // backslash
+    (44, 0x1D), (45, 0x1B), (46, 0x06), (47, 0x19), (48, 0x05), // Z X C V B
+    (49, 0x11), (50, 0x10), // N M
+    (51, 0x36), (52, 0x37), (53, 0x38), // , . /
+    (54, 0xE5), // Right Shift
+    (55, 0x55), // Keypad *
+    (56, 0xE2), // Left Alt
+    (57, 0x2C), // Space
+    (58, 0x39), // Caps Lock
+    (59, 0x3A), (60, 0x3B), (61, 0x3C), (62, 0x3D), (63, 0x3E), // F1-F5
+    (64, 0x3F), (65, 0x40), (66, 0x41), (67, 0x42), (68, 0x43), // F6-F10
+    (69, 0x53), // Num Lock
+    (70, 0x47), // Scroll Lock
+    (71, 0x5F), (72, 0x60), (73, 0x61), // Keypad 7 8 9
+    (74, 0x56), // Keypad -
+    (75, 0x5C), (76, 0x5D), (77, 0x5E), // Keypad 4 5 6
+    (78, 0x57), // Keypad +
+    (79, 0x59), (80, 0x5A), (81, 0x5B), // Keypad 1 2 3
+    (82, 0x62), (83, 0x63), // Keypad 0 .
+    (86, 0x64), // extra key next to left Shift on ISO keyboards
+    (87, 0x44), (88, 0x45), // F11 F12
+    (96, 0x58), // Keypad Enter
+    (97, 0xE4), // Right Ctrl
+    (98, 0x54), // Keypad /
+    (99, 0x46), // Print Screen
+    (100, 0xE6), // Right Alt
+    (102, 0x4A), (103, 0x52), (104, 0x4B), // Home Up PageUp
+    (105, 0x50), (106, 0x4F), // Left Right
+    (107, 0x4D), (108, 0x51), (109, 0x4E), // End Down PageDown
+    (110, 0x49), (111, 0x4C), // Insert Delete
+    (119, 0x48), // Pause
+    (125, 0xE3), (126, 0xE7), // Left and right Super ("Windows") keys
+    (127, 0x65), // Menu
+];
+
+/// Convert a Linux key code into a HID usage.
+pub fn from_linux(code: u16) -> Option<u16> {
+    LINUX.iter().find(|(c, _)| *c == code).map(|(_, hid)| *hid)
+}
+
+/// Convert a HID usage into a Linux key code.
+pub fn to_linux(hid: u16) -> Option<u16> {
+    LINUX.iter().find(|(_, h)| *h == hid).map(|(code, _)| *code)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +213,47 @@ mod tests {
         assert!(is_modifier(0xE0) && is_modifier(0xE7) && !is_modifier(0x04));
         assert!(is_ctrl(0xE4) && !is_ctrl(0xE1));
         assert!(is_alt(0xE2) && is_alt(0xE6) && !is_alt(0xE0));
+    }
+
+    #[test]
+    fn linux_table_has_no_duplicates_and_round_trips() {
+        let mut codes = HashSet::new();
+        let mut hids = HashSet::new();
+        for (code, hid) in LINUX {
+            assert!(codes.insert(*code), "duplicate Linux code {code}");
+            assert!(hids.insert(*hid), "duplicate HID usage {hid:#x}");
+            assert_eq!(from_linux(*code), Some(*hid));
+            assert_eq!(to_linux(*hid), Some(*code));
+        }
+        assert_eq!(from_linux(0), None);
+        assert_eq!(from_linux(240), None);
+    }
+
+    #[test]
+    fn both_systems_know_the_same_keys() {
+        // Every key Windows can send must be playable on Linux, and the
+        // other way round (Pause is special on Windows only in how it is
+        // injected, so it is absent from the Windows table).
+        for (_, _, hid) in TABLE {
+            assert!(to_linux(*hid).is_some(), "Linux lacks HID {hid:#x}");
+        }
+        for (_, hid) in LINUX {
+            assert!(*hid == HID_PAUSE || to_windows(*hid).is_some(), "Windows lacks HID {hid:#x}");
+        }
+    }
+
+    #[test]
+    fn well_known_linux_keys() {
+        // Values from the kernel's input-event-codes.h.
+        assert_eq!(to_linux(0x04), Some(30)); // KEY_A
+        assert_eq!(to_linux(0x1D), Some(44)); // KEY_Z
+        assert_eq!(to_linux(0x28), Some(28)); // KEY_ENTER
+        assert_eq!(to_linux(0x2C), Some(57)); // KEY_SPACE
+        assert_eq!(to_linux(0x50), Some(105)); // KEY_LEFT
+        assert_eq!(to_linux(0x4C), Some(111)); // KEY_DELETE
+        assert_eq!(to_linux(HID_HOME), Some(102)); // KEY_HOME
+        assert_eq!(to_linux(0xE3), Some(125)); // KEY_LEFTMETA
+        assert_eq!(to_linux(0xE6), Some(100)); // KEY_RIGHTALT
+        assert_eq!(to_linux(0x45), Some(88)); // KEY_F12
     }
 }

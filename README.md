@@ -4,14 +4,17 @@ One mouse, keyboard and clipboard across the computers on your desk. Push the
 cursor through the edge of one screen and it comes out on the next computer.
 Everything stays on your local network and is encrypted end to end.
 
-It runs on Windows 10 and 11. The network protocol is platform
-neutral, so other systems can be added without changing it.
+It runs on Windows 10 and 11, and on Linux desktops that use X11 (see
+[Linux](#linux) for what that means and what is missing there). Windows and
+Linux computers work together. The network protocol is platform neutral, so
+other systems can be added without changing it.
 
 ## Quick start (the app)
 
 Download `ScreenPortals.exe` from the [latest release](../../releases/latest),
 copy it to both computers and start it on each. It sits
 in the notification area; click its icon to open the settings window.
+(On Linux the file is `ScreenPortals-linux-x86_64`; see [Linux](#linux).)
 
 1. Press **Add a computer** on both.
 2. Both show the same six-digit code. Press **Codes match** on each.
@@ -69,6 +72,56 @@ to switch this off. Builds you make yourself never update.
 Updates come over HTTPS from this repository on github.com and nowhere else,
 so whoever can publish releases here decides what runs on the computers using
 it. Keep the account that owns the repository secure.
+
+### Linux
+
+Download `ScreenPortals-linux-x86_64` from the
+[latest release](../../releases/latest), then mark it as a program and
+start it:
+
+```
+chmod +x ScreenPortals-linux-x86_64
+./ScreenPortals-linux-x86_64
+```
+
+The settings window opens in your browser. There is no icon by the clock
+yet: start the program again to bring the window back, and use **Quit** in
+the window to stop it. `screen-portals-linux-x86_64` is the command-line
+program; `./screen-portals-linux-x86_64 doctor` checks that the computer is
+ready.
+
+**It needs an X11 session.** Linux desktops come in two kinds, X11 (also
+called Xorg) and Wayland. Wayland does not let an ordinary program watch
+and move the mouse for the whole desktop, so Screen Portals refuses to
+start there and says so. To find out which one you have:
+
+```
+echo $XDG_SESSION_TYPE
+```
+
+If it says `wayland`, sign out and look for a session called "Xorg" or
+"X11" on the sign-in screen (often behind a gear icon). Some recent
+systems no longer offer one; Screen Portals cannot run on those yet.
+
+What works on Linux: the mouse, keyboard and wheel in both directions,
+copied text, files and pictures, **Send files**, sound in both directions
+(through PulseAudio or PipeWire, using the `parec`, `pacat` and `pactl`
+tools most desktops already have), and automatic updates.
+
+How far this has been checked: every change is run on two pretend Linux
+displays that pair, pass the mouse, keys, text, a picture and a file
+across, and check sound capture (`tests/linux-desktop.sh`). It has not yet
+been checked on a real desk, with PipeWire, or through a Linux update.
+
+What does not, yet:
+
+- Carrying a drag across. What you drag *onto* a Linux computer arrives
+  ready to paste instead; dragging *from* Linux does not cross.
+- Reopening a browser window's page on the other computer.
+- An icon by the clock, and starting with the computer.
+- Keyboards are passed on key by key, which assumes the usual Linux key
+  numbering (true for ordinary Xorg sessions; remote-desktop X servers may
+  differ).
 
 ### Sound
 
@@ -145,12 +198,12 @@ about a second).
 ## Not yet built
 
 - Dropping whole folders on the window (copy and paste carries folders)
-- Starting with Windows automatically
+- Starting with the computer automatically
 - Hiding the parked cursor while it is on the other computer
 - Arranging individual monitors of a multi-monitor computer (each computer is
   one rectangle covering its whole desktop)
 - Relative mouse movement for games
-- macOS and Linux
+- macOS, and Linux desktops on Wayland
 - Windows that run as administrator, and the lock/UAC screens, ignore
   simulated input unless Screen Portals itself is started as administrator
 
@@ -171,7 +224,8 @@ about a second).
 | Settings window | `ui.rs`, `ui/index.html` | A page served to this computer only; files chosen there are streamed through to the other computer. |
 | Engine | `node.rs` | Ties it together and makes sure nothing stays stuck if a link drops. |
 | Windows | `platform/windows.rs` | Low-level hooks to watch input, `SendInput` to play it back, clipboard listener. |
-| Key codes | `keymap.rs` | Windows scan codes to USB HID usages and back. |
+| Linux | `platform/linux.rs`, `platform/x11_clip.rs`, `platform/linux_audio.rs` | Watches input through XInput 2, grabs it while the cursor is away, plays it back with XTEST; the X11 clipboard; sound through the desktop's own tools. |
+| Key codes | `keymap.rs` | Windows scan codes and Linux key codes to USB HID usages and back. |
 
 ### Design choices
 
@@ -209,9 +263,10 @@ about a second).
 | Path | What is there |
 | --- | --- |
 | `src/` | The program. Everything outside `src/platform/` is portable and tested without real devices. |
-| `src/platform/` | The Windows side: hooks, clipboard, sound, drag and drop. |
+| `src/platform/` | The Windows and Linux sides: watching and playing back input, clipboard, sound, drag and drop. |
 | `ui/index.html` | The settings window (one self-contained page, built into the program). |
 | `tests/loopback.rs` | End-to-end tests: whole engines talking over real sockets to pretend computers. |
+| `tests/linux-desktop.sh` | The real Linux programs on two pretend displays: pairs them, pushes the mouse across, types, copies and comes back. |
 | `examples/ui_demo.rs` | Preview the settings window against pretend computers. |
 | `docs/` | The landing page, served by GitHub Pages. |
 | `.github/workflows/` | Tests every change and publishes each push to `main` as a release. |
@@ -226,7 +281,8 @@ cargo build --release
 ```
 
 On Windows, build from a short folder path (or set `CARGO_TARGET_DIR` to one);
-very long paths exceed the system's 260-character limit.
+very long paths exceed the system's 260-character limit. On Linux nothing
+else needs installing to build: the program speaks to the X server directly.
 
 The tests run two or three complete engines against each other over real
 sockets with a simulated screen, so they never touch your actual mouse or

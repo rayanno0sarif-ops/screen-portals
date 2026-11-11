@@ -1,14 +1,23 @@
-//! The windowed application: lives in the notification area, shares input in
-//! the background and opens the settings window on request.
+//! The windowed application: shares input in the background and opens the
+//! settings window on request. On Windows it lives in the notification
+//! area; on Linux there is no icon yet, and starting the program again
+//! brings the window back.
 #![windows_subsystem = "windows"]
 #![allow(non_snake_case)]
 
+// The part of the program that differs between systems. (The name is kept
+// from when Windows was the only one.)
+#[cfg(target_os = "linux")]
+use screen_portals::platform::linux as windows;
 #[cfg(windows)]
+use screen_portals::platform::windows;
+
+#[cfg(any(windows, target_os = "linux"))]
 fn run() -> Result<(), String> {
     use screen_portals::config::{default_name, Store};
     use screen_portals::node::{Node, Options, PairingOptions, DEFAULT_TCP_PORT};
-    use screen_portals::platform::windows::{self, TrayOptions, WinPlatform};
     use screen_portals::ui::{self, PairPrompt};
+    use windows::TrayOptions;
     use std::net::{IpAddr, Ipv4Addr};
     use std::path::PathBuf;
     use screen_portals::update;
@@ -69,7 +78,7 @@ fn run() -> Result<(), String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--config-dir" => config_dir = Some(PathBuf::from(args.next().ok_or("--config-dir needs a folder")?)),
-            // For starting with Windows: stay in the tray until asked.
+            // For starting with the computer: no window until asked.
             "--hidden" => hidden = true,
             // Started by the previous version, which is still closing.
             "--after-update" => after_update = true,
@@ -94,9 +103,10 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
+    let platform = windows::platform()?;
     let prompt = PairPrompt::new();
     let node = Node::start(
-        Arc::new(WinPlatform),
+        Arc::new(platform),
         store,
         Options {
             name: default_name(),
@@ -133,14 +143,14 @@ fn run() -> Result<(), String> {
     result
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn main() {
     if let Err(e) = run() {
-        screen_portals::platform::windows::error_box(&e);
+        windows::error_box(&e);
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
-    eprintln!("The windowed application only supports Windows so far.");
+    eprintln!("The windowed application only supports Windows and Linux so far.");
 }

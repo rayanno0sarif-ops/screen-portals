@@ -7,9 +7,9 @@
 <meta name="site-kind" content="software">
 <meta name="color-scheme" content="light dark">
 <title>Screen Portals: one mouse and keyboard for every PC on your desk</title>
-<meta name="description" content="A free, open-source Windows app that shares one mouse, keyboard, clipboard, files and sound between the computers on your desk. Encrypted, on your own network.">
+<meta name="description" content="A free, open-source app for Windows and Linux that shares one mouse, keyboard, clipboard, files and sound between the computers on your desk. Encrypted, on your own network.">
 <meta property="og:title" content="Screen Portals">
-<meta property="og:description" content="One mouse and keyboard for every Windows PC on your desk. Free, open source, encrypted.">
+<meta property="og:description" content="One mouse and keyboard for every Windows and Linux PC on your desk. Free, open source, encrypted.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#F5F4F0">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20'%3E%3Crect x='1' y='2' width='11' height='16' rx='3' fill='none' stroke='%231C1B18' stroke-width='1.6'/%3E%3Crect x='16' y='2' width='11' height='16' rx='3' fill='none' stroke='%231C1B18' stroke-width='1.6'/%3E%3Cpath d='M14 5v10' stroke='%230A6B57' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -179,14 +179,14 @@
   <section class="hero" id="top">
     <div class="wrap split">
       <div>
-        <p class="eyebrow">Free and open source, for Windows</p>
+        <p class="eyebrow">Free and open source, for Windows and Linux</p>
         <h1>One mouse and keyboard for every PC on your desk</h1>
         <p class="lede">Push the cursor through the edge of one screen and it comes out on the next computer. Your typing, clipboard, files and sound follow it.</p>
         <div class="actions">
           <a class="btn primary" data-link="download" href="#start">Download for Windows</a>
-          <a class="btn" data-link="source" href="#start">Read the source</a>
+          <a class="btn" data-link="linux" href="#start">Download for Linux</a>
         </div>
-        <p class="fact">Windows 10 and 11. One file under 3 MB, nothing to install, no account.</p>
+        <p class="fact">Windows 10 and 11, and Linux on X11. One small file, nothing to install, no account.</p>
       </div>
       <div class="app" role="img" aria-label="The Screen Portals window: two computers side by side with a marked edge between them, and the cursor moving from one to the other.">
         <div class="app-bar">Screen Portals <span class="state">Connected to Work laptop</span></div>
@@ -259,15 +259,16 @@
     <div class="wrap">
       <h2>Three steps from download to one mouse</h2>
       <ol class="steps">
-        <li><h3>Put the file on both computers</h3><p>Download ScreenPortals.exe and start it on each. It sits by the clock.</p></li>
+        <li><h3>Put the file on both computers</h3><p>Download the file for each computer and start it. On Windows it sits by the clock.</p></li>
         <li><h3>Press Add a computer on both</h3><p>Check the two codes match, then press Codes match.</p></li>
         <li><h3>Drag the screens into place</h3><p>From then on they find each other, and update themselves.</p></li>
       </ol>
       <div class="actions" style="margin:0 0 40px">
-        <a class="btn primary" data-link="download" href="#start">Download ScreenPortals.exe</a>
+        <a class="btn primary" data-link="download" href="#start">Download for Windows</a>
+        <a class="btn" data-link="linux" href="#start">Download for Linux</a>
         <a class="btn" data-link="source" href="#start">See the code on GitHub</a>
       </div>
-      <p class="honest"><b>An early release.</b> Windows only for now. The program is not yet signed, so Windows asks you to confirm the first start, and its firewall asks once to allow it on private networks. Programs running as administrator, and games that lock the mouse, do not accept shared input.</p>
+      <p class="honest"><b>An early release.</b> On Linux it needs an X11 session (not Wayland), has no icon by the clock, and things dragged across arrive ready to paste; the Linux file must be marked as a program before it starts. On Windows the program is not yet signed, so Windows asks you to confirm the first start, and its firewall asks once to allow it on private networks. Programs running as administrator, and games that lock the mouse, do not accept shared input.</p>
     </div>
   </section>
 </main>
@@ -288,7 +289,7 @@
     const repo = location.pathname.split('/').filter(Boolean)[0] || '';
     if (!owner || !repo) return;
     const base = `https://github.com/${owner}/${repo}`;
-    const to = { download: `${base}/releases/latest/download/ScreenPortals.exe`, source: base, issues: `${base}/issues` };
+    const to = { download: `${base}/releases/latest/download/ScreenPortals.exe`, linux: `${base}/releases/latest/download/ScreenPortals-linux-x86_64`, source: base, issues: `${base}/issues` };
     document.querySelectorAll('[data-link]').forEach(a => { a.href = to[a.dataset.link]; });
   })();
 </script>

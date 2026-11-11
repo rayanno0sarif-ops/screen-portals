@@ -1,7 +1,8 @@
 # Every change that reaches the main branch is tested, built and published
-# as a release. Installed copies of Screen Portals look at the newest
-# release and update themselves (see src/update.rs), so pushing to main is
-# all it takes to update every computer.
+# as a release, for Windows and for Linux. Installed copies of Screen
+# Portals look at the newest release and update themselves (see
+# src/update.rs), so pushing to main is all it takes to update every
+# computer.
 #
 # Pull requests are only tested; nothing is published from them.
 name: Build and release
@@ -18,8 +19,16 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# The build number is this workflow's run number: it only ever goes up,
+# which is how an installed copy knows a release is newer. (Renaming this
+# workflow file would start the count again from 1, and installed copies
+# would then ignore the lower numbers.) Builds for pull requests carry no
+# number, exactly like builds made by hand, and never update themselves.
+# The number is given to the Build steps only: the tests check how a build
+# without one behaves.
+
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,21 +36,15 @@ jobs:
       - name: Test
         run: cargo test --locked
 
-      # The build number is this workflow's run number: it only ever goes
-      # up, which is how an installed copy knows a release is newer.
-      # (Renaming this workflow file would start the count again from 1,
-      # and installed copies would then ignore the lower numbers.)
       - name: Build
-        if: github.event_name == 'push'
         env:
-          SCREEN_PORTALS_BUILD: ${{ github.run_number }}
+          SCREEN_PORTALS_BUILD: ${{ github.event_name == 'push' && github.run_number || '' }}
           SCREEN_PORTALS_REPO: ${{ github.repository }}
         run: cargo build --release --locked
 
       # latest.json tells installed copies what the newest build is and
       # what the program file must hash to once downloaded.
       - name: Describe the build
-        if: github.event_name == 'push'
         shell: pwsh
         run: |
           New-Item -ItemType Directory out | Out-Null
@@ -52,14 +55,74 @@ jobs:
           [IO.File]::WriteAllText("$PWD/out/latest.json", $json)
           Get-Content out/latest.json
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/
+          if-no-files-found: error
+
+  linux:
+    # The oldest Ubuntu on offer, so the programs also start on Linux
+    # systems that are a few years old.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install what the desktop test needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xdotool xclip xinput pulseaudio pulseaudio-utils
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        env:
+          SCREEN_PORTALS_BUILD: ${{ github.event_name == 'push' && github.run_number || '' }}
+          SCREEN_PORTALS_REPO: ${{ github.repository }}
+        run: cargo build --release --locked
+
+      # Two pretend desktops, one copy of the program on each: pair them,
+      # push the mouse across, type, copy and come back.
+      - name: Test on pretend desktops
+        run: bash tests/linux-desktop.sh target/release
+
+      - name: Describe the build
+        run: |
+          mkdir out
+          cp target/release/ScreenPortals out/ScreenPortals-linux-x86_64
+          cp target/release/screen-portals out/screen-portals-linux-x86_64
+          hash=$(sha256sum out/ScreenPortals-linux-x86_64 | cut -d' ' -f1)
+          size=$(stat -c %s out/ScreenPortals-linux-x86_64)
+          printf '{"build":%s,"sha256":"%s","size":%s}' "${{ github.run_number }}" "$hash" "$size" > out/latest-linux-x86_64.json
+          cat out/latest-linux-x86_64.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: out/
+          if-no-files-found: error
+
+  # One release holding both systems' files, made only when both built.
+  release:
+    if: github.event_name == 'push'
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
       - name: Publish the release
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: pwsh
+          GH_REPO: ${{ github.repository }}
         run: >
           gh release create "build-${{ github.run_number }}"
           out/ScreenPortals.exe out/screen-portals.exe out/latest.json
+          out/ScreenPortals-linux-x86_64 out/screen-portals-linux-x86_64 out/latest-linux-x86_64.json
           --title "Build ${{ github.run_number }}"
           --notes "Built from ${{ github.sha }}. Installed copies update to this by themselves."
+          --target "${{ github.sha }}"
           --latest

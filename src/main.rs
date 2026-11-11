@@ -8,6 +8,12 @@ use screen_portals::node::DEFAULT_TCP_PORT;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+// The part of the program that differs between systems.
+#[cfg(target_os = "linux")]
+use screen_portals::platform::linux as os;
+#[cfg(windows)]
+use screen_portals::platform::windows as os;
+
 const USAGE: &str = "\
 Screen Portals - one mouse and keyboard across your computers
 
@@ -19,7 +25,7 @@ USAGE
   screen-portals doctor                                 check this computer is ready
   screen-portals doctor pointer                         also move the cursor briefly to test playback
   screen-portals doctor sound                           also test sound (silences this computer for a second)
-  screen-portals doctor drag                            also test carrying a drag (clicks where the cursor is)
+  screen-portals doctor drag                            also test carrying a drag (clicks where the cursor is; Windows only)
 
 OPTIONS
   --side <where>        where the OTHER computer sits relative to this one (pair only;
@@ -203,22 +209,70 @@ fn doctor(args: Args) -> Result<(), String> {
     }
 }
 
-#[cfg(not(windows))]
+/// `doctor` on Linux: the same idea, for a desktop running on X11.
+#[cfg(target_os = "linux")]
+fn doctor(args: Args) -> Result<(), String> {
+    os::init();
+    let store = Store::open(args.config_dir)?;
+    let identity = store.identity()?;
+    let config = store.load_config()?;
+    let mark = |ok: bool| if ok { "ok" } else { "FAILED" };
+    println!("Settings folder   {}", store.dir().display());
+    println!("Identity key      {}", fingerprint(&identity.public));
+    println!("Paired computers  {}", config.peers.len());
+    let tcp = std::net::TcpListener::bind(("0.0.0.0", args.port)).is_ok();
+    println!("TCP port {:<8} {}", args.port, if tcp { "free" } else { "in use (another free port will be chosen)" });
+    // Connecting checks everything input sharing rests on: an X11 session
+    // and its XInput 2, XTEST and XFIXES extensions.
+    let d = match os::diagnose() {
+        Ok(d) => d,
+        Err(problem) => {
+            println!("Desktop session   FAILED");
+            return Err(problem);
+        }
+    };
+    println!("Desktop session   ok (X11)");
+    println!("Desktop           {}x{}", d.desktop.w, d.desktop.h);
+    println!("Cursor rests at   ({}, {}) while it is on another computer", d.park.0, d.park.1);
+    println!("Cursor            ({}, {})", d.cursor.0, d.cursor.1);
+    if args.positional.iter().any(|p| p == "pointer") {
+        let worst = os::pointer_self_test()?;
+        println!("Pointer playback  {} (largest error {worst} px)", mark(worst <= 2));
+        if worst > 2 {
+            return Err("the cursor did not land where it was sent".into());
+        }
+    }
+    if args.positional.iter().any(|p| p == "sound") {
+        match screen_portals::platform::linux_audio::self_test() {
+            Ok(detail) => println!("Sound             ok ({detail})"),
+            Err(problem) => {
+                println!("Sound             FAILED");
+                return Err(problem);
+            }
+        }
+    }
+    if args.positional.iter().any(|p| p == "drag") {
+        println!("Dragging          not available on Linux yet; what is dragged here arrives ready to paste");
+    }
+    Ok(())
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn doctor(_args: Args) -> Result<(), String> {
-    Err("this build only supports Windows so far".into())
+    Err("this build only supports Windows and Linux so far".into())
 }
 
 /// `run` and `pair`: start the engine and keep going until Ctrl+C.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn run(args: Args) -> Result<(), String> {
     use screen_portals::node::{Node, Options, PairingOptions};
     use screen_portals::pairing;
-    use screen_portals::platform::windows::{self, WinPlatform};
     use std::io::Write;
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::Arc;
 
-    windows::init();
+    os::init();
+    let platform = os::platform()?;
     let pairing_mode = args.command == "pair";
     if args.side.is_some() && !pairing_mode {
         return Err("--side only applies to `pair`".into());
@@ -240,7 +294,7 @@ fn run(args: Args) -> Result<(), String> {
     });
 
     let node = Node::start(
-        Arc::new(WinPlatform),
+        Arc::new(platform),
         store,
         Options {
             name: args.name.unwrap_or_else(default_name),
@@ -249,7 +303,7 @@ fn run(args: Args) -> Result<(), String> {
             discovery: args.discovery,
             pairing,
             connect: args.connect,
-            received_dir: windows::downloads_dir().map(|d| d.join("Screen Portals")),
+            received_dir: os::downloads_dir().map(|d| d.join("Screen Portals")),
         },
     )?;
 
@@ -265,10 +319,10 @@ fn run(args: Args) -> Result<(), String> {
     }
     println!("Copied text is shared at once; copied files and pictures follow the cursor.");
     println!("Ctrl+Alt+Home brings the cursor back here. Press Ctrl+C in this window to quit.");
-    windows::run(node)
+    os::run(node)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn run(_args: Args) -> Result<(), String> {
-    Err("this build only supports Windows so far; the network protocol is ready for other platforms".into())
+    Err("this build only supports Windows and Linux so far; the network protocol is ready for other platforms".into())
 }

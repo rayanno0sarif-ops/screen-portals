@@ -158,6 +158,12 @@ pub fn init() {
 /// The real thing: this computer's mouse, keyboard, clipboard, sound and screen.
 pub struct WinPlatform;
 
+/// The platform to hand to the engine. (It cannot fail on Windows; on
+/// Linux the same call can, when the desktop session is unusable.)
+pub fn platform() -> Result<WinPlatform, String> {
+    Ok(WinPlatform)
+}
+
 fn send_mouse(dx: i32, dy: i32, data: i32, flags: u32) {
     let input = INPUT {
         r#type: INPUT_MOUSE,
