@@ -653,7 +653,11 @@ impl Node {
     /// Stop for good: close every connection and refuse new ones.
     pub fn shutdown(&self) {
         self.stopped.store(true, Ordering::Relaxed);
-        self.come_home();
+        // The cursor comes home without a goodbye: the other computer lets
+        // go of everything when the connection closes, and treats a held
+        // drag as abandoned. A goodbye sent now would race the closing
+        // and could arrive as an ordinary release, dropping the drag.
+        *self.ctl.lock().unwrap() = Ctl::local();
         self.disconnect_all();
         // Give this computer its own sound back before the program exits.
         self.audio_reconcile();
