@@ -152,6 +152,13 @@ sleep 0.3
 read -r after _ <<<"$(where $B)"
 [ "$before" = "$after" ] || fail "B's cursor still moves although the mouse is back on A"
 
+step "Copy a file on A (it should follow the cursor too)"
+mkdir -p "$WORK/my files"
+printf 'carried across\n' >"$WORK/my files/a note.txt"
+printf 'file://%s\r\n' "$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$WORK/my files/a note.txt")" \
+    | DISPLAY=$A xclip -selection clipboard -t text/uri-list
+sleep 0.5
+
 step "Ctrl+Alt+Home brings the mouse home from B"
 DISPLAY=$A xdotool mousemove 1200 400
 push 20 6
@@ -165,6 +172,15 @@ push -20 5
 sleep 0.3
 read -r after _ <<<"$(where $B)"
 [ "$before" = "$after" ] || fail "the escape keys did not bring the mouse home"
+
+step "The file copied on A can be pasted on B"
+file_arrived() {
+    local uri copy
+    uri=$(DISPLAY=$B timeout 5 xclip -o -selection clipboard -t text/uri-list 2>/dev/null | head -n 1 | tr -d '\r')
+    copy=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1].removeprefix("file://")))' "$uri")
+    [ "$copy" != "$WORK/my files/a note.txt" ] && [ "$(basename "$copy")" = "a note.txt" ] && cmp -s "$copy" "$WORK/my files/a note.txt"
+}
+eventually file_arrived || fail "the file did not arrive on B's clipboard"
 
 step "The windowed application starts, serves its window and quits cleanly"
 DISPLAY=$A "$APP" --hidden --no-update --config-dir "$WORK/app" >"$WORK/app.log" 2>&1 &

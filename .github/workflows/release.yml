@@ -24,9 +24,8 @@ concurrency:
 # workflow file would start the count again from 1, and installed copies
 # would then ignore the lower numbers.) Builds for pull requests carry no
 # number, exactly like builds made by hand, and never update themselves.
-env:
-  SCREEN_PORTALS_BUILD: ${{ github.event_name == 'push' && github.run_number || '' }}
-  SCREEN_PORTALS_REPO: ${{ github.repository }}
+# The number is given to the Build steps only: the tests check how a build
+# without one behaves.
 
 jobs:
   windows:
@@ -38,6 +37,9 @@ jobs:
         run: cargo test --locked
 
       - name: Build
+        env:
+          SCREEN_PORTALS_BUILD: ${{ github.event_name == 'push' && github.run_number || '' }}
+          SCREEN_PORTALS_REPO: ${{ github.repository }}
         run: cargo build --release --locked
 
       # latest.json tells installed copies what the newest build is and
@@ -75,6 +77,9 @@ jobs:
         run: cargo test --locked
 
       - name: Build
+        env:
+          SCREEN_PORTALS_BUILD: ${{ github.event_name == 'push' && github.run_number || '' }}
+          SCREEN_PORTALS_REPO: ${{ github.repository }}
         run: cargo build --release --locked
 
       # Two pretend desktops, one copy of the program on each: pair them,

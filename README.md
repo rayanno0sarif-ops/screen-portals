@@ -108,6 +108,11 @@ copied text, files and pictures, **Send files**, sound in both directions
 (through PulseAudio or PipeWire, using the `parec`, `pacat` and `pactl`
 tools most desktops already have), and automatic updates.
 
+How far this has been checked: every change is run on two pretend Linux
+displays that pair, pass the mouse, keys, text, a picture and a file
+across, and check sound capture (`tests/linux-desktop.sh`). It has not yet
+been checked on a real desk, with PipeWire, or through a Linux update.
+
 What does not, yet:
 
 - Carrying a drag across. What you drag *onto* a Linux computer arrives
