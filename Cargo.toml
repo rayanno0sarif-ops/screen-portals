@@ -1,0 +1,55 @@
+[package]
+name = "screen-portals"
+version = "0.5.0"
+edition = "2021"
+description = "Share one mouse, keyboard and clipboard between computers on your local network."
+license = "MIT"
+
+[dependencies]
+snow = "0.9"
+chacha20poly1305 = "0.10"
+blake2 = "0.10"
+getrandom = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", features = ["alloc"] }
+socket2 = "0.5"
+png = "0.17"
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+cpal = "0.18.2"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Shell", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com"] }
+windows-core = "0.62"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[[bin]]
+name = "screen-portals"
+path = "src/main.rs"
+
+# The windowed application: tray icon and settings window, no console.
+[[bin]]
+name = "ScreenPortals"
+path = "src/app.rs"
+
+[[example]]
+name = "ui_demo"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
