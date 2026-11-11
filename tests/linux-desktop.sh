@@ -180,7 +180,8 @@ if command -v pulseaudio >/dev/null && pulseaudio --start --exit-idle-time=-1 >"
     && pactl load-module module-null-sink sink_name=pretend_speakers >/dev/null \
     && pactl set-default-sink pretend_speakers; then
     DISPLAY=$A "$CLI" doctor sound --config-dir "$WORK/a" --port 47901 || fail "doctor sound"
-    [ "$(pactl get-sink-mute pretend_speakers)" = "Mute: no" ] || fail "the speakers were left muted"
+    [ "$(pactl get-default-sink)" = "pretend_speakers" ] || fail "the sound was not given back to the speakers"
+    if pactl list short sinks | grep -q screen_portals_away; then fail "the pretend output was left behind"; fi
 else
     echo "skipped: no sound server could be started here"
 fi

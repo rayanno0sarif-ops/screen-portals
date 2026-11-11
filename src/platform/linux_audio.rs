@@ -6,9 +6,11 @@
 //! those instead of linking a sound library, which keeps the program free
 //! of C libraries to build against.
 //!
-//! - **Sending our sound away**: record the "monitor" of the speakers
-//!   (everything this computer plays) and mute the speakers meanwhile. The
-//!   monitor is tapped before the mute, so recording still hears it all.
+//! - **Sending our sound away**: add a pretend output that leads nowhere,
+//!   make everything this computer plays go to it instead of the speakers,
+//!   and record what arrives there. (Simply muting the speakers and
+//!   recording them does not work: on many setups the recording goes
+//!   silent too.) Stopping puts everything back as it was.
 //! - **Playing others' sound**: mix what arrives and feed it to `pacat`.
 
 use crate::audio::Player;
@@ -31,49 +33,88 @@ fn pactl(args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// A note left on disk while this program has the speakers muted, holding
-/// the name of the muted output. If the program is killed or the computer
-/// shuts down meanwhile, the note is how the next start knows to give the
-/// speakers back.
+/// The pretend output this computer's sound is sent into while it is being
+/// played somewhere else.
+const AWAY: &str = "screen_portals_away";
+
+/// A note left on disk while the sound is turned away from the speakers,
+/// holding what to put back. If the program is killed or the computer
+/// shuts down meanwhile, the note is how the next start knows to undo it.
 fn marker() -> std::path::PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).filter(|d| d.is_dir()).unwrap_or_else(std::env::temp_dir);
-    dir.join(format!("screen-portals-{}-muted", unsafe { libc::getuid() }))
+    dir.join(format!("screen-portals-{}-sound-away", unsafe { libc::getuid() }))
 }
 
-/// Undo a mute left behind by a run that ended without tidying up. Called
-/// once when the program starts.
-pub fn recover() {
-    let Ok(sink) = std::fs::read_to_string(marker()) else { return };
-    let sink = sink.trim();
-    if sink.is_empty() || pactl(&["set-sink-mute", sink, "0"]).is_some() {
-        let _ = std::fs::remove_file(marker());
-        log("the speakers were still muted from last time; they are back on");
-    }
+/// What was changed to turn the sound away, so it can be undone.
+struct Away {
+    /// The output that was in use before.
+    speakers: String,
+    /// The number the sound server gave our pretend output.
+    module: String,
 }
 
-/// Mute the speakers in use. Returns their name if the mute is ours to undo.
-fn silence_speakers() -> Option<String> {
-    let sink = pactl(&["get-default-sink"]).filter(|name| !name.is_empty())?;
-    let already = pactl(&["get-sink-mute", &sink]).is_some_and(|state| state.to_ascii_lowercase().ends_with("yes"));
-    // Muted already with our note present means an earlier run of ours did
-    // it, so it is still ours to undo.
-    let ours = if already { marker().exists() } else { pactl(&["set-sink-mute", &sink, "1"]).is_some() };
-    if !ours {
+/// The numbers of everything that is playing right now.
+fn playing() -> Vec<String> {
+    let list = pactl(&["list", "short", "sink-inputs"]).unwrap_or_default();
+    list.lines().filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect()
+}
+
+/// Send everything this computer plays into a pretend output instead of
+/// the speakers. `None` if the sound server would not do it; then nothing
+/// has been changed.
+fn turn_away() -> Option<Away> {
+    let speakers = pactl(&["get-default-sink"]).filter(|name| !name.is_empty() && name != AWAY)?;
+    let module = pactl(&[
+        "load-module",
+        "module-null-sink",
+        &format!("sink_name={AWAY}"),
+        "sink_properties=device.description=Sound_sent_to_another_computer",
+    ])
+    .filter(|module| !module.is_empty())?;
+    let away = Away { speakers, module };
+    let _ = std::fs::write(marker(), format!("{}\n{}", away.speakers, away.module));
+    if pactl(&["set-default-sink", AWAY]).is_none() {
+        turn_back(&away);
         return None;
     }
-    let _ = std::fs::write(marker(), &sink);
-    Some(sink)
+    // What is already playing stays where it is unless it is moved.
+    for stream in playing() {
+        let _ = pactl(&["move-sink-input", &stream, AWAY]);
+    }
+    Some(away)
 }
 
-fn restore_speakers(sink: &str) {
-    if pactl(&["set-sink-mute", sink, "0"]).is_some() {
-        let _ = std::fs::remove_file(marker());
+/// Undo `turn_away`: sound comes out of the speakers again.
+fn turn_back(away: &Away) {
+    let _ = pactl(&["set-default-sink", &away.speakers]);
+    for stream in playing() {
+        let _ = pactl(&["move-sink-input", &stream, &away.speakers]);
+    }
+    // Removing the pretend output also sends back anything still on it.
+    let _ = pactl(&["unload-module", &away.module]);
+    let _ = std::fs::remove_file(marker());
+}
+
+/// Undo a change left behind by a run that ended without tidying up.
+/// Called once when the program starts.
+pub fn recover() {
+    let Ok(note) = std::fs::read_to_string(marker()) else { return };
+    let mut lines = note.lines().map(str::trim);
+    match (lines.next(), lines.next()) {
+        (Some(speakers), Some(module)) if !speakers.is_empty() && module.chars().all(|c| c.is_ascii_digit()) => {
+            turn_back(&Away { speakers: speakers.to_string(), module: module.to_string() });
+            log("the sound was still turned away from the speakers from last time; it is back");
+        }
+        _ => {
+            let _ = std::fs::remove_file(marker());
+        }
     }
 }
 
 fn recorder() -> std::io::Result<Child> {
     Command::new("parec")
-        .args(["--device=@DEFAULT_MONITOR@", "--format=s16le", "--channels=2", "--raw", "--latency-msec=20"])
+        .arg(format!("--device={AWAY}.monitor"))
+        .args(["--format=s16le", "--channels=2", "--raw", "--latency-msec=20"])
         .arg(format!("--rate={RATE}"))
         .arg("--client-name=Screen Portals")
         .stdin(Stdio::null())
@@ -104,8 +145,7 @@ struct Capture {
     recorder: Child,
     stop: Arc<AtomicBool>,
     reader: Option<std::thread::JoinHandle<()>>,
-    /// The output we muted, if we did.
-    muted: Option<String>,
+    away: Away,
 }
 
 static CAPTURE: Mutex<Option<Capture>> = Mutex::new(None);
@@ -124,20 +164,26 @@ pub fn capture(on: bool) {
         if let Some(reader) = running.reader.take() {
             let _ = reader.join();
         }
-        if let Some(sink) = running.muted {
-            restore_speakers(&sink);
-        }
+        turn_back(&running.away);
         return;
     }
+    let Some(away) = turn_away() else {
+        // Nothing was changed, so this computer simply keeps its sound.
+        log("the sound server would not redirect this computer's sound (is `pactl` installed?)");
+        return;
+    };
     let mut recorder = match recorder() {
         Ok(recorder) => recorder,
         Err(e) => {
-            // Nothing was muted, so this computer simply keeps its sound.
+            turn_back(&away);
             log(&format!("cannot record what this computer plays (is `parec` installed?): {e}"));
             return;
         }
     };
-    let Some(recorded) = recorder.stdout.take() else { return };
+    let Some(recorded) = recorder.stdout.take() else {
+        turn_back(&away);
+        return;
+    };
     let stop = Arc::new(AtomicBool::new(false));
     let reader = {
         let stop = stop.clone();
@@ -149,7 +195,7 @@ pub fn capture(on: bool) {
             })
         })
     };
-    *capture = Some(Capture { recorder, stop, reader: Some(reader), muted: silence_speakers() });
+    *capture = Some(Capture { recorder, stop, reader: Some(reader), away });
 }
 
 static PLAYER: OnceLock<Mutex<Player>> = OnceLock::new();
@@ -237,15 +283,24 @@ fn play_until_quiet() {
     let _ = speaker.wait();
 }
 
-/// Really record this computer's own sound for a moment: mute the
-/// speakers, play a quiet tone, and check the recording heard it even
-/// though the speakers were silent. Everything is put back afterwards.
+/// Really record this computer's own sound for a moment: turn the sound
+/// away from the speakers, play a quiet tone, and check the recording
+/// heard it. Everything is put back afterwards.
 pub fn self_test() -> Result<String, String> {
     let server = pactl(&["info"]).ok_or("no sound server answered (`pactl info` failed); PulseAudio or PipeWire with its tools is needed")?;
     let name = server.lines().find_map(|line| line.strip_prefix("Server Name: ")).unwrap_or("unknown").to_string();
-    let mut recorder = recorder().map_err(|e| format!("cannot start `parec`: {e}"))?;
-    let recorded = recorder.stdout.take().ok_or("cannot read from `parec`")?;
-    let muted = silence_speakers();
+    let away = turn_away().ok_or("the sound server would not redirect this computer's sound")?;
+    let mut recorder = match recorder() {
+        Ok(recorder) => recorder,
+        Err(e) => {
+            turn_back(&away);
+            return Err(format!("cannot start `parec`: {e}"));
+        }
+    };
+    let Some(recorded) = recorder.stdout.take() else {
+        turn_back(&away);
+        return Err("cannot read from `parec`".into());
+    };
     let stop = Arc::new(AtomicBool::new(false));
     let loudest = Arc::new(Mutex::new(0i32));
     let reader = {
@@ -276,9 +331,7 @@ pub fn self_test() -> Result<String, String> {
     let _ = recorder.kill();
     let _ = recorder.wait();
     let _ = reader.join();
-    if let Some(sink) = &muted {
-        restore_speakers(sink);
-    }
+    turn_back(&away);
     played.map_err(|e| format!("cannot play through `pacat`: {e}"))?;
     let loudest = *loudest.lock().unwrap();
     if loudest < 500 {
@@ -286,6 +339,5 @@ pub fn self_test() -> Result<String, String> {
             "the test tone was not heard in the recording (loudest sample {loudest}) on {name}; this computer's sound cannot be sent to another one"
         ));
     }
-    let muting = if muted.is_some() { "speakers muted meanwhile" } else { "speakers were muted already" };
-    Ok(format!("{name}; heard the test tone, {muting}"))
+    Ok(format!("{name}; heard the test tone while it was kept away from \"{}\"", away.speakers))
 }
