@@ -83,12 +83,29 @@ enum Doing {
     Catching { token: u64, until: Instant, seen: bool },
     /// Waiting for the pressed button to arrive so a drag can start.
     Beginning { payload: DragPayload, until: Instant },
+    /// A browser window is held against the edge. Its page is only sent if
+    /// it is still held there, unmoved, when the time is up: snapping a
+    /// window to the edge of the screen must not count.
+    Lingering { token: u64, until: Instant, at: (i32, i32) },
+}
+
+/// Where a requested drag has got to before its button press exists.
+#[derive(PartialEq)]
+enum Press {
+    Nothing,
+    /// Asked for, but the press has not been made yet.
+    Queued,
+    /// The button was released before the press was made: skip the press.
+    Abandoned,
 }
 
 static WINDOW: AtomicPtr<c_void> = AtomicPtr::new(null_mut());
 static QUEUE: Mutex<VecDeque<Cmd>> = Mutex::new(VecDeque::new());
 static DOING: Mutex<Doing> = Mutex::new(Doing::Idle);
 static CANCEL: AtomicBool = AtomicBool::new(false);
+static PRESS: Mutex<Press> = Mutex::new(Press::Nothing);
+/// How long a browser window must be held against the edge.
+const LINGER: Duration = Duration::from_millis(1200);
 /// A drag we started has just begun and the helper window is still in its way.
 static IN_THE_WAY: AtomicBool = AtomicBool::new(false);
 static STARTED: OnceLock<()> = OnceLock::new();
@@ -114,12 +131,18 @@ fn format_id(name: &str) -> u16 {
     unsafe { RegisterClipboardFormatW(wide(name).as_ptr()) as u16 }
 }
 
-fn post(cmd: Cmd) {
+/// Start the drag thread. Done once when the program starts, so that the
+/// first drag does not have to wait for it inside the mouse hook.
+pub fn start() {
     STARTED.get_or_init(|| {
         let (ready, wait) = mpsc::channel();
         std::thread::spawn(move || run(ready));
         let _ = wait.recv_timeout(Duration::from_secs(3));
     });
+}
+
+fn post(cmd: Cmd) {
+    start();
     QUEUE.lock().unwrap().push_back(cmd);
     let window = WINDOW.load(Ordering::Relaxed);
     if !window.is_null() {
@@ -139,7 +162,22 @@ pub fn catch(token: u64) {
 /// had just been pressed on it. The drag ends when the button is released.
 pub fn begin(payload: DragPayload) {
     CANCEL.store(false, Ordering::Relaxed);
+    *PRESS.lock().unwrap() = Press::Queued;
     post(Cmd::Begin(payload));
+}
+
+/// The left button is about to be released on behalf of another computer.
+/// If a drag was asked for but its press has not been made yet, the press
+/// is called off and this returns true: the release must then be skipped
+/// too, or it would arrive before the press and leave the button stuck down.
+pub fn release_before_press() -> bool {
+    let mut press = PRESS.lock().unwrap();
+    if *press == Press::Queued {
+        *press = Press::Abandoned;
+        true
+    } else {
+        false
+    }
 }
 
 /// Abandon a drag started with `begin` without dropping it anywhere.
@@ -459,13 +497,18 @@ unsafe fn step(window: HWND) {
             SetTimer(window, 1, 30, None);
         }
         Cmd::Begin(payload) => {
-            if !matches!(*DOING.lock().unwrap(), Doing::Idle) {
+            // Held until the press has been made, so a release can never
+            // slip in between the decision and the press.
+            let mut press = PRESS.lock().unwrap();
+            let wanted = std::mem::replace(&mut *press, Press::Nothing) == Press::Queued;
+            if !wanted || !matches!(*DOING.lock().unwrap(), Doing::Idle) {
                 return;
             }
             trace("pressing the button on the helper window");
             *DOING.lock().unwrap() = Doing::Beginning { payload, until: Instant::now() + BEGIN_WAIT };
             place(window, true);
             mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+            drop(press);
             SetTimer(window, 1, 30, None);
         }
         // The flag is what stops a drag; nothing else to do here.
@@ -477,7 +520,9 @@ unsafe fn step(window: HWND) {
 unsafe fn tick(window: HWND) {
     let mut doing = DOING.lock().unwrap();
     let expired = match &*doing {
-        Doing::Catching { until, seen: false, .. } | Doing::Beginning { until, .. } => Instant::now() > *until,
+        Doing::Catching { until, seen: false, .. } | Doing::Beginning { until, .. } | Doing::Lingering { until, .. } => {
+            Instant::now() > *until
+        }
         // A drag that was offered gets a little longer to be handed over.
         Doing::Catching { until, seen: true, .. } => Instant::now() > *until + Duration::from_millis(600),
         _ => false,
@@ -495,8 +540,25 @@ unsafe fn tick(window: HWND) {
     place(window, false);
     match was {
         // Nothing was being dragged in the usual sense. It may still be a
-        // browser window held by its title bar.
-        Doing::Catching { token, .. } => deliver(token, host::page_being_moved().map_or(Caught::Nothing, Caught::Page)),
+        // browser window held by its title bar: give it time to show that
+        // it is being held here on purpose.
+        Doing::Catching { token, .. } => {
+            if super::win_page::browser_being_moved() {
+                let mut at = POINT { x: 0, y: 0 };
+                GetCursorPos(&mut at);
+                *DOING.lock().unwrap() = Doing::Lingering { token, until: Instant::now() + LINGER, at: (at.x, at.y) };
+                SetTimer(window, 1, 100, None);
+            } else {
+                deliver(token, Caught::Nothing);
+            }
+        }
+        Doing::Lingering { token, at, .. } => {
+            let mut now = POINT { x: 0, y: 0 };
+            GetCursorPos(&mut now);
+            let held_still = (now.x - at.0).abs() <= 12 && (now.y - at.1).abs() <= 12;
+            let page = if held_still { host::page_being_moved() } else { None };
+            deliver(token, page.map_or(Caught::Nothing, Caught::Page));
+        }
         // The press never reached us; balance it so no button stays down.
         Doing::Beginning { .. } => mouse(MOUSEEVENTF_LEFTUP, 0, 0),
         _ => {}
