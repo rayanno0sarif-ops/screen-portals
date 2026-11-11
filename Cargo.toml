@@ -37,6 +37,11 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+# Linux talks to the X server directly; no C libraries are needed to build.
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["xinput", "xtest", "xfixes", "randr"] }
+libc = "0.2"
+
 [[bin]]
 name = "screen-portals"
 path = "src/main.rs"

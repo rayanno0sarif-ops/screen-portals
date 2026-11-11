@@ -184,6 +184,10 @@ fn default_dir() -> Result<PathBuf, String> {
     if let Some(appdata) = std::env::var_os("APPDATA") {
         return Ok(PathBuf::from(appdata).join("ScreenPortals"));
     }
+    // Linux desktops name their settings folder; "~/.config" is the default.
+    if let Some(config) = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|dir| dir.is_absolute()) {
+        return Ok(config.join("screen-portals"));
+    }
     if let Some(home) = std::env::var_os("HOME") {
         return Ok(PathBuf::from(home).join(".config").join("screen-portals"));
     }
@@ -201,9 +205,20 @@ pub fn default_received_dir() -> PathBuf {
 
 /// This computer's name as shown to others.
 pub fn default_name() -> String {
+    // Windows keeps the name in the environment; Linux keeps it in a file.
+    let from_file = || {
+        ["/proc/sys/kernel/hostname", "/etc/hostname"]
+            .iter()
+            .filter_map(|path| fs::read_to_string(path).ok())
+            .map(|name| name.trim().to_string())
+            .find(|name| !name.is_empty() && name.len() <= 64)
+    };
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "computer".to_string())
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .or_else(from_file)
+        .unwrap_or_else(|| "computer".to_string())
 }
 
 #[cfg(test)]

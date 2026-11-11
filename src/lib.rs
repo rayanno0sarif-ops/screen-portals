@@ -1,7 +1,7 @@
 //! Screen Portals: share one mouse, keyboard and clipboard between computers
 //! on a local network.
 //!
-//! The crate is split so that everything except `platform::windows` is plain,
+//! The crate is split so that everything outside `platform` is plain,
 //! portable Rust that can be tested without touching real input devices.
 
 pub mod audio;
@@ -18,6 +18,7 @@ pub mod picture;
 pub mod secure;
 pub mod transfer;
 pub mod update;
+pub mod uri;
 pub mod ui;
 
 /// Fill a buffer with operating-system randomness.

@@ -7,6 +7,10 @@
 use crate::layout::Rect;
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "linux")]
+pub mod linux;
+#[cfg(target_os = "linux")]
+pub mod linux_audio;
 pub mod mock;
 #[cfg(windows)]
 pub mod win_audio;
@@ -16,6 +20,8 @@ pub mod win_drag;
 pub mod win_page;
 #[cfg(windows)]
 pub mod windows;
+#[cfg(target_os = "linux")]
+pub mod x11_clip;
 
 /// Something being dragged with the mouse, in a form that can travel.
 #[derive(Debug, Clone, PartialEq)]

@@ -23,10 +23,22 @@ const BUILD: Option<&str> = option_env!("SCREEN_PORTALS_BUILD");
 /// "owner/name" of the repository that built this program.
 const REPO: Option<&str> = option_env!("SCREEN_PORTALS_REPO");
 
-/// The file an installed copy replaces itself with.
+/// The file an installed copy replaces itself with. Each system has its
+/// own program file and its own description of the newest release.
+#[cfg(windows)]
 pub const PROGRAM: &str = "ScreenPortals.exe";
+#[cfg(not(windows))]
+pub const PROGRAM: &str = "ScreenPortals-linux-x86_64";
 /// The small file describing the newest release.
+#[cfg(windows)]
 pub const DESCRIPTION: &str = "latest.json";
+#[cfg(not(windows))]
+pub const DESCRIPTION: &str = "latest-linux-x86_64.json";
+/// How a program file for this system starts; anything else is not one.
+#[cfg(windows)]
+const MAGIC: &[u8] = b"MZ";
+#[cfg(not(windows))]
+const MAGIC: &[u8] = &[0x7F, b'E', b'L', b'F'];
 const MAX_PROGRAM: u64 = 64 * 1024 * 1024;
 const MAX_DESCRIPTION: u64 = 4096;
 
@@ -44,6 +56,10 @@ fn tidy_repo(repo: &str) -> Option<&str> {
 /// Where this build looks for newer ones, if anywhere.
 pub fn release_url() -> Option<String> {
     this_build()?;
+    // Releases only carry programs for these two kinds of computer.
+    if !cfg!(any(windows, all(target_os = "linux", target_arch = "x86_64"))) {
+        return None;
+    }
     Some(format!("https://github.com/{}/releases/latest/download", tidy_repo(REPO?)?))
 }
 
@@ -93,8 +109,8 @@ pub fn fetch_newer(mine: u64, base: &str, fetch: &dyn Fn(&str, u64) -> Result<Ve
     if program.len() as u64 != latest.size || !sha256_hex(&program).eq_ignore_ascii_case(&latest.sha256) {
         return Err("the downloaded update did not arrive intact".into());
     }
-    // An executable starts with "MZ"; anything else is not a program.
-    if !program.starts_with(b"MZ") {
+    // Every program file starts the same way; anything else is not one.
+    if !program.starts_with(MAGIC) {
         return Err("the downloaded update is not a program".into());
     }
     Ok(Some((latest.build, program)))
@@ -112,6 +128,15 @@ fn beside(exe: &Path, suffix: &str) -> PathBuf {
 pub fn swap_in(exe: &Path, program: &[u8]) -> Result<(), String> {
     let (fresh, old) = (beside(exe, ".new"), beside(exe, ".old"));
     std::fs::write(&fresh, program).map_err(|e| format!("cannot save the update: {e}"))?;
+    // Elsewhere a file is only a program once it is marked as one.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(&fresh, std::fs::Permissions::from_mode(0o755)) {
+            let _ = std::fs::remove_file(&fresh);
+            return Err(format!("cannot make the update runnable: {e}"));
+        }
+    }
     let _ = std::fs::remove_file(&old);
     if let Err(e) = std::fs::rename(exe, &old) {
         let _ = std::fs::remove_file(&fresh);
@@ -136,6 +161,11 @@ pub fn clean_up(exe: &Path) {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    /// Pretend program files: they start the way real ones do here.
+    fn program_file(rest: &str) -> Vec<u8> {
+        [MAGIC, rest.as_bytes()].concat()
+    }
 
     fn description(build: u64, program: &[u8]) -> Vec<u8> {
         format!(r#"{{"build":{build},"sha256":"{}","size":{}}}"#, sha256_hex(program), program.len()).into_bytes()
@@ -164,7 +194,7 @@ mod tests {
 
     #[test]
     fn descriptions_are_checked() {
-        let good = description(7, b"MZ program");
+        let good = description(7, &program_file(" program"));
         assert_eq!(parse_latest(&good).unwrap().build, 7);
         let with_marker = [&[0xEF, 0xBB, 0xBF][..], &good].concat();
         assert_eq!(parse_latest(&with_marker).unwrap().build, 7);
@@ -176,13 +206,13 @@ mod tests {
 
     #[test]
     fn a_newer_build_is_downloaded_and_checked() {
-        let program = b"MZ this is the new program".to_vec();
+        let program = program_file(" this is the new program");
         let asked = RefCell::new(Vec::new());
         let asked = &asked;
         let serve = |latest: Vec<u8>, body: Vec<u8>| {
             move |url: &str, limit: u64| -> Result<Vec<u8>, String> {
                 asked.borrow_mut().push((url.to_string(), limit));
-                if url.ends_with("latest.json") { Ok(latest.clone()) } else { Ok(body.clone()) }
+                if url.ends_with(DESCRIPTION) { Ok(latest.clone()) } else { Ok(body.clone()) }
             }
         };
 
@@ -194,10 +224,10 @@ mod tests {
 
         // Newer: the program comes back, and was asked for with its exact size as the limit.
         assert_eq!(fetch_newer(4, "https://x", &fetch).unwrap(), Some((5, program.clone())));
-        assert_eq!(asked.borrow().last().unwrap(), &("https://x/ScreenPortals.exe".to_string(), program.len() as u64));
+        assert_eq!(asked.borrow().last().unwrap(), &(format!("https://x/{PROGRAM}"), program.len() as u64));
 
         // Damaged, cut short, swapped or not a program at all: refused.
-        let damaged = serve(description(5, &program), b"MZ this is the new progrAm".to_vec());
+        let damaged = serve(description(5, &program), program_file(" this is the new progrAm"));
         assert!(fetch_newer(4, "https://x", &damaged).is_err());
         let short = serve(description(5, &program), program[..10].to_vec());
         assert!(fetch_newer(4, "https://x", &short).is_err());
@@ -220,6 +250,11 @@ mod tests {
 
         swap_in(&exe, b"new").unwrap();
         assert_eq!(std::fs::read(&exe).unwrap(), b"new");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&exe).unwrap().permissions().mode() & 0o111, 0o111, "the new program can be run");
+        }
         assert_eq!(std::fs::read(dir.join("ScreenPortals.exe.old")).unwrap(), b"old");
         assert!(!dir.join("ScreenPortals.exe.new").exists());
 
