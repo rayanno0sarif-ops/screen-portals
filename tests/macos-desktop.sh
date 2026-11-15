@@ -94,7 +94,8 @@ step "Push the mouse through the Mac's right edge"
 "$INPUT" move 15 0 8
 eventually peer_saw 'Abs(' || fail "the cursor did not arrive on the pretend computer"
 before=$(count 'Abs(')
-"$INPUT" move -10 5 10
+# Further in, away from the edge it came through.
+"$INPUT" move 10 5 10
 sleep 0.3
 after=$(count 'Abs(')
 echo "pointer updates on the pretend computer: $before then $after"
@@ -134,7 +135,7 @@ copy=$(find "$WORK/peer/received" -name 'a note.txt' | head -1)
 [ -n "$copy" ] && cmp -s "$copy" "$WORK/my files/a note.txt" || fail "the file arrived damaged or not at all"
 
 step "Push the mouse back through the left side of the pretend computer"
-"$INPUT" move -40 0 4
+"$INPUT" move -40 0 8
 sleep 0.5
 x0=$(mac_x)
 echo "the Mac's cursor came back at x=$x0"
