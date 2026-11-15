@@ -138,8 +138,13 @@ echo "arrived as $copy"
 [ -n "$copy" ] && cmp -s "$copy" "$WORK/my files/a note.txt" || fail "the file arrived damaged or not at all"
 
 step "Push the mouse back through the left side of the pretend computer"
-"$INPUT" move -40 0 8
-sleep 0.5
+# Push left a step at a time until the cursor is back at the Mac's right
+# edge (where the engine puts it on the way home).
+for _ in $(seq 10); do
+    "$INPUT" move -40 0 1
+    sleep 0.2
+    [ "$(mac_x)" -gt $((W - 100)) ] && break
+done
 x0=$(mac_x)
 echo "the Mac's cursor came back at x=$x0"
 [ "$x0" -gt $((W - 100)) ] || fail "the cursor did not come back at the Mac's right edge"
