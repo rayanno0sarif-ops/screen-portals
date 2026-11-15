@@ -930,6 +930,8 @@ fn run_inner(node: Arc<Node>, with_menu_bar: bool) -> Result<(), String> {
         cg::CFRunLoopAddTimer(main, timer, cg::kCFRunLoopCommonModes);
     }
 
+    // Whatever was copied before now is left alone.
+    mac_clip::start();
     let delegate = Delegate::new(mtm);
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     if with_menu_bar {

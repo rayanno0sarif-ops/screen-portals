@@ -35,7 +35,7 @@ static WAITING: Mutex<Vec<mpsc::Sender<Option<Vec<u8>>>>> = Mutex::new(Vec::new(
 
 thread_local! {
     /// The clipboard's counter when it was last looked at (main thread).
-    static SEEN: Cell<isize> = const { Cell::new(-1) };
+    static SEEN: Cell<isize> = const { Cell::new(0) };
 }
 
 /// Put this on the clipboard (within a tenth of a second). Safe from any thread.
@@ -164,6 +164,13 @@ fn news(board: &NSPasteboard) -> News {
     News::Cleared
 }
 
+/// Remember what is on the clipboard now, so that only later copies count
+/// as news. Called on the main thread before watching starts.
+pub fn start() {
+    let count = NSPasteboard::generalPasteboard().changeCount();
+    SEEN.with(|seen| seen.set(count));
+}
+
 /// Called on the main thread ten times a second.
 pub fn tick(node: &Arc<Node>) {
     let board = NSPasteboard::generalPasteboard();
@@ -180,14 +187,7 @@ pub fn tick(node: &Arc<Node>) {
         }
     }
     let count = board.changeCount();
-    let first = SEEN.with(|seen| {
-        let first = seen.get() == -1;
-        let changed = seen.get() != count;
-        seen.set(count);
-        if changed { Some(first) } else { None }
-    });
-    // Whatever was copied before the program started is left alone.
-    if first != Some(false) {
+    if SEEN.with(|seen| seen.replace(count)) == count {
         return;
     }
     match news(&board) {
