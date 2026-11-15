@@ -1,7 +1,7 @@
 //! The windowed application: shares input in the background and opens the
 //! settings window on request. On Windows it lives in the notification
-//! area; on Linux there is no icon yet, and starting the program again
-//! brings the window back.
+//! area and on a Mac in the menu bar; on Linux there is no icon yet, and
+//! starting the program again brings the window back.
 #![windows_subsystem = "windows"]
 #![allow(non_snake_case)]
 
@@ -9,10 +9,12 @@
 // from when Windows was the only one.)
 #[cfg(target_os = "linux")]
 use screen_portals::platform::linux as windows;
+#[cfg(target_os = "macos")]
+use screen_portals::platform::mac as windows;
 #[cfg(windows)]
 use screen_portals::platform::windows;
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn run() -> Result<(), String> {
     use screen_portals::config::{default_name, Store};
     use screen_portals::node::{Node, Options, PairingOptions, DEFAULT_TCP_PORT};
@@ -125,6 +127,12 @@ fn run() -> Result<(), String> {
         windows::open_app_window(&url);
     }
 
+    // A Mac app opened straight from Downloads runs from a read-only copy
+    // that cannot be replaced; it updates once moved to Applications.
+    #[cfg(target_os = "macos")]
+    if windows::running_from_download() {
+        updates = false;
+    }
     if updates {
         if let (Some(build), Some(source)) = (update::this_build(), update::release_url()) {
             let node = node.clone();
@@ -143,14 +151,14 @@ fn run() -> Result<(), String> {
     result
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn main() {
     if let Err(e) = run() {
         windows::error_box(&e);
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn main() {
-    eprintln!("The windowed application only supports Windows and Linux so far.");
+    eprintln!("The windowed application only supports Windows, Linux and macOS so far.");
 }

@@ -11,6 +11,8 @@ use std::process::ExitCode;
 // The part of the program that differs between systems.
 #[cfg(target_os = "linux")]
 use screen_portals::platform::linux as os;
+#[cfg(target_os = "macos")]
+use screen_portals::platform::mac as os;
 #[cfg(windows)]
 use screen_portals::platform::windows as os;
 
@@ -26,6 +28,8 @@ USAGE
   screen-portals doctor pointer                         also move the cursor briefly to test playback
   screen-portals doctor sound                           also test sound (silences this computer for a second)
   screen-portals doctor drag                            also test carrying a drag (clicks where the cursor is; Windows only)
+
+  On a Mac, the command-line program is screen-portals-macos.
 
 OPTIONS
   --side <where>        where the OTHER computer sits relative to this one (pair only;
@@ -257,13 +261,56 @@ fn doctor(args: Args) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+/// `doctor` on a Mac.
+#[cfg(target_os = "macos")]
+fn doctor(args: Args) -> Result<(), String> {
+    os::init();
+    let store = Store::open(args.config_dir)?;
+    let identity = store.identity()?;
+    let config = store.load_config()?;
+    let mark = |ok: bool| if ok { "ok" } else { "FAILED" };
+    println!("Settings folder   {}", store.dir().display());
+    println!("Identity key      {}", fingerprint(&identity.public));
+    println!("Paired computers  {}", config.peers.len());
+    let tcp = std::net::TcpListener::bind(("0.0.0.0", args.port)).is_ok();
+    println!("TCP port {:<8} {}", args.port, if tcp { "free" } else { "in use (another free port will be chosen)" });
+    let d = match os::diagnose() {
+        Ok(d) => d,
+        Err(problem) => {
+            println!("Mouse and keyboard FAILED");
+            return Err(problem);
+        }
+    };
+    println!("Mouse and keyboard ok (allowed under Privacy & Security)");
+    println!("Desktop           {}x{} at ({}, {}), {} display(s)", d.desktop.w, d.desktop.h, d.desktop.x, d.desktop.y, d.displays);
+    println!("Cursor rests at   ({}, {}) while it is on another computer", d.park.0, d.park.1);
+    println!("Cursor            ({}, {})", d.cursor.0, d.cursor.1);
+    if args.positional.iter().any(|p| p == "pointer") {
+        let worst = os::pointer_self_test()?;
+        println!("Pointer playback  {} (largest error {worst} px)", mark(worst <= 2));
+        if worst > 2 {
+            return Err("the cursor did not land where it was sent".into());
+        }
+    }
+    if args.positional.iter().any(|p| p == "sound") {
+        match screen_portals::platform::mac_audio::output_name() {
+            Some(name) => println!("Sound             plays other computers' sound through \"{name}\"; this Mac's own sound stays here"),
+            None => println!("Sound             no sound output found"),
+        }
+    }
+    if args.positional.iter().any(|p| p == "drag") {
+        println!("Dragging          not available on the Mac yet; what is dragged here arrives ready to paste");
+    }
+    Ok(())
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn doctor(_args: Args) -> Result<(), String> {
-    Err("this build only supports Windows and Linux so far".into())
+    Err("this build only supports Windows, Linux and macOS so far".into())
 }
 
 /// `run` and `pair`: start the engine and keep going until Ctrl+C.
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn run(args: Args) -> Result<(), String> {
     use screen_portals::node::{Node, Options, PairingOptions};
     use screen_portals::pairing;
@@ -322,7 +369,7 @@ fn run(args: Args) -> Result<(), String> {
     os::run(node)
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn run(_args: Args) -> Result<(), String> {
-    Err("this build only supports Windows and Linux so far; the network protocol is ready for other platforms".into())
+    Err("this build only supports Windows, Linux and macOS so far; the network protocol is ready for other platforms".into())
 }

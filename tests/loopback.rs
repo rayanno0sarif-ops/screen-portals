@@ -686,6 +686,24 @@ fn captures(screen: &MockPlatform) -> Vec<bool> {
 }
 
 #[test]
+fn a_computer_that_cannot_send_its_sound_keeps_it_and_says_so() {
+    use screen_portals::node::SoundState;
+    let (a, b, dir_a, dir_b) = pair("keep");
+    // The laptop is the kind of computer that cannot send its sound yet.
+    b.screen.keep_own_sound();
+    let key_a = b.node.peers()[0].key_bytes().unwrap();
+    b.node.set_speakers(Some(key_a)).unwrap();
+    assert_eq!(b.node.status().sound, SoundState::Kept);
+    wait_for("the desk to agree", || a.node.speakers() == Some(key_a));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(captures(&b.screen).is_empty(), "nothing is captured where it cannot be sent");
+    assert_eq!(a.node.status().sound, SoundState::Own);
+    a.node.shutdown();
+    b.node.shutdown();
+    let _ = (std::fs::remove_dir_all(dir_a), std::fs::remove_dir_all(dir_b));
+}
+
+#[test]
 fn sound_comes_out_of_the_chosen_computer_only() {
     use screen_portals::node::SoundState;
     let (a, b, dir_a, dir_b) = pair("snd");

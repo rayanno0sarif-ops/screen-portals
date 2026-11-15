@@ -35,6 +35,8 @@ pub struct MockPlatform {
     cursor: Mutex<(i32, i32)>,
     events: Mutex<Vec<Event>>,
     image: Mutex<Option<Vec<u8>>>,
+    /// Pretend this computer cannot send its own sound away.
+    keeps_sound: std::sync::atomic::AtomicBool,
 }
 
 impl MockPlatform {
@@ -45,7 +47,13 @@ impl MockPlatform {
             cursor: Mutex::new((w / 2, h / 2)),
             events: Mutex::new(Vec::new()),
             image: Mutex::new(None),
+            keeps_sound: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    /// Pretend this computer cannot send its own sound away (as on a Mac).
+    pub fn keep_own_sound(&self) {
+        self.keeps_sound.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Pretend the user copied this picture (PNG bytes) here.
@@ -124,6 +132,10 @@ impl Platform for MockPlatform {
 
     fn capture_audio(&self, on: bool) {
         self.record(Event::Capture(on));
+    }
+
+    fn can_send_audio(&self) -> bool {
+        !self.keeps_sound.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn play_audio(&self, _source: u64, seq: u32, rate: u32, stereo: &[i16]) {

@@ -288,6 +288,10 @@ pub enum SoundState {
     /// Another computer was chosen but cannot be reached right now, so
     /// sound plays here meanwhile.
     Waiting,
+    /// Another computer was chosen, but this kind of computer cannot send
+    /// its own sound away yet, so it plays here. Sound from the others
+    /// still goes to the chosen one.
+    Kept,
 }
 
 /// Where this computer's own mouse and keyboard are currently going.
@@ -1742,7 +1746,7 @@ impl Node {
             return None;
         }
         let key = self.speakers()?;
-        if key == self.identity.public {
+        if key == self.identity.public || !self.platform.can_send_audio() {
             return None;
         }
         let link = self.links.lock().unwrap().get(&key).cloned()?;
@@ -1755,6 +1759,7 @@ impl Node {
             return SoundState::Sending;
         }
         match self.speakers() {
+            Some(key) if key != self.identity.public && !self.platform.can_send_audio() => SoundState::Kept,
             Some(key) if key != self.identity.public => SoundState::Waiting,
             _ => SoundState::Own,
         }
