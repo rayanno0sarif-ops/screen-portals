@@ -131,7 +131,10 @@ sleep 0.5
 "$INPUT" goto $((W - 60)) 300
 "$INPUT" move 15 0 8
 eventually peer_saw 'ClipboardFiles(' || fail "the copied file did not arrive"
-copy=$(find "$WORK/peer/received" -name 'a note.txt' | head -1)
+# Carried files wait in a temporary folder until pasted; the pretend
+# computer reports where.
+copy=$(grep -F 'ClipboardFiles(' "$WORK/peer.log" | tail -1 | sed -E 's/.*\["([^"]*)".*//')
+echo "arrived as $copy"
 [ -n "$copy" ] && cmp -s "$copy" "$WORK/my files/a note.txt" || fail "the file arrived damaged or not at all"
 
 step "Push the mouse back through the left side of the pretend computer"
