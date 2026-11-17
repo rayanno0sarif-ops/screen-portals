@@ -135,6 +135,7 @@ mkdir -p "$WORK/my files"
 printf 'carried across\n' >"$WORK/my files/a note.txt"
 osascript -e "set the clipboard to (POSIX file \"$WORK/my files/a note.txt\")"
 sleep 0.5
+echo "the clipboard holds: $(osascript -e 'clipboard info')"
 "$INPUT" goto $((W - 60)) 300
 "$INPUT" move 15 0 8
 eventually peer_saw 'ClipboardFiles(' || fail "the copied file did not arrive"
