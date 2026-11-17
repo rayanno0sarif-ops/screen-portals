@@ -163,9 +163,11 @@ jobs:
           path: out/
           if-no-files-found: error
 
-  # One release holding every system's files, made only when all built.
+  # One release holding every system's files. Windows and Linux must have
+  # built; if the Mac did not, the release goes out without Mac files and
+  # Macs simply keep the version they have.
   release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success'
     needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
@@ -180,9 +182,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: >
           gh release create "build-${{ github.run_number }}"
-          out/ScreenPortals.exe out/screen-portals.exe out/latest.json
-          out/ScreenPortals-linux-x86_64 out/screen-portals-linux-x86_64 out/latest-linux-x86_64.json
-          out/ScreenPortals-macos.zip out/ScreenPortals-macos out/screen-portals-macos out/latest-macos.json
+          out/*
           --title "Build ${{ github.run_number }}"
           --notes "Built from ${{ github.sha }}. Installed copies update to this by themselves."
           --target "${{ github.sha }}"

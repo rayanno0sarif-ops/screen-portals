@@ -102,10 +102,17 @@ echo "pointer updates on the pretend computer: $before then $after"
 [ "$after" -gt "$before" ] || fail "moving the Mac's mouse did not move the pretend computer's cursor"
 
 step "Typing and clicking land on the pretend computer, not on the Mac"
+"$INPUT" listen 3 >"$WORK/held-back.log" 2>&1 &
+listener=$!
+sleep 0.5
 "$INPUT" key 0
 "$INPUT" click
 eventually peer_saw 'Key(4, true)' || fail "the A key did not arrive"
 eventually peer_saw 'Button(1, true)' || fail "the click did not arrive"
+wait "$listener" || true
+if grep -q "key 0 down\|button left down" "$WORK/held-back.log"; then
+    fail "the key or click also reached the Mac's own programs"
+fi
 
 step "The picture copied on the Mac arrived"
 size=$(stat -f %z "$WORK/picture.png")

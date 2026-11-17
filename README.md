@@ -99,9 +99,17 @@ Accessibility.
 
 The app lives in the menu bar (two small screens). Its menu opens the
 settings window, pauses sharing and quits. `screen-portals-macos` is the
-command-line program; mark it as a program with `chmod +x
-screen-portals-macos`, then `./screen-portals-macos doctor` checks the Mac is
-ready.
+command-line program. A browser marks downloads as coming from the
+internet, and macOS will not run such a program from Terminal, so clear the
+mark and make it runnable first:
+
+```
+xattr -d com.apple.quarantine screen-portals-macos
+chmod +x screen-portals-macos
+./screen-portals-macos doctor
+```
+
+The last line checks the Mac is ready.
 
 What works on a Mac: the mouse, keyboard and wheel in both directions,
 copied text, files and pictures, **Send files**, playing other computers'

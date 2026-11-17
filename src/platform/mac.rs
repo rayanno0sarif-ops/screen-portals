@@ -182,8 +182,6 @@ static PLAYBACK: Mutex<Playback> = Mutex::new(Playback::new());
 struct Playback {
     buttons: Vec<u8>,
     keys: Vec<u16>,
-    /// Modifier keys held, as Mac key codes.
-    modifiers: Vec<u16>,
     /// Wheel movement not yet large enough for one notch.
     wheel: (i32, i32),
     /// The last press, to count double and triple clicks.
@@ -192,12 +190,12 @@ struct Playback {
 
 impl Playback {
     const fn new() -> Playback {
-        Playback { buttons: Vec::new(), keys: Vec::new(), modifiers: Vec::new(), wheel: (0, 0), last_press: None }
+        Playback { buttons: Vec::new(), keys: Vec::new(), wheel: (0, 0), last_press: None }
     }
 
     /// The modifier flags programs expect on every event while those keys are held.
     fn flags(&self) -> u64 {
-        self.modifiers.iter().map(|code| modifier_flag(*code)).fold(0, |all, flag| all | flag)
+        self.keys.iter().map(|code| modifier_flag(*code)).fold(0, |all, flag| all | flag)
     }
 }
 
@@ -435,12 +433,8 @@ impl Platform for MacPlatform {
             if !repeat {
                 playback.keys.push(code);
             }
-            if is_modifier(code) && !playback.modifiers.contains(&code) {
-                playback.modifiers.push(code);
-            }
         } else {
             playback.keys.retain(|k| *k != code);
-            playback.modifiers.retain(|k| *k != code);
         }
         unsafe {
             let event = cg::CGEventCreateKeyboardEvent(source(), code, down);
@@ -544,8 +538,6 @@ fn quiet(command: &mut Command) -> bool {
 
 /// Scroll movement not yet large enough to pass on (trackpads send tiny steps).
 static SCROLL_REST: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
-/// Modifier keys the user is holding, as Mac key codes.
-static HELD_MODIFIERS: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 
 /// One event from the tap. Returns true if it must be held back from this
 /// Mac because it now belongs to another computer.
@@ -602,14 +594,7 @@ unsafe fn handle(node: &Arc<Node>, kind: u32, event: cg::Ref) -> bool {
                 node.on_key(0x39, false)
             } else if let (true, Some(hid)) = (is_modifier(code), keymap::from_mac(code)) {
                 let side = modifier_flag(code) & 0xFFFF;
-                let down = cg::CGEventGetFlags(event) & side != 0;
-                let mut held = HELD_MODIFIERS.lock().unwrap();
-                held.retain(|c| *c != code);
-                if down {
-                    held.push(code);
-                }
-                drop(held);
-                node.on_key(hid, down)
+                node.on_key(hid, cg::CGEventGetFlags(event) & side != 0)
             } else {
                 remote
             }

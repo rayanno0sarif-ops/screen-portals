@@ -57,16 +57,12 @@ fn has(types: &NSArray<NSPasteboardType>, wanted: &NSPasteboardType) -> bool {
     types.iter().any(|t| t.isEqualToString(wanted))
 }
 
-fn bytes(data: &NSData) -> Vec<u8> {
-    data.to_vec()
-}
-
 fn image_now() -> Option<Vec<u8>> {
     let board = NSPasteboard::generalPasteboard();
     let types = board.types()?;
     unsafe {
         if has(&types, NSPasteboardTypePNG) {
-            let png = bytes(&*board.dataForType(NSPasteboardTypePNG)?);
+            let png = board.dataForType(NSPasteboardTypePNG)?.to_vec();
             if picture::looks_like_png(&png) {
                 return Some(png);
             }
@@ -76,7 +72,7 @@ fn image_now() -> Option<Vec<u8>> {
             let tiff = board.dataForType(NSPasteboardTypeTIFF)?;
             let image = NSBitmapImageRep::imageRepWithData(&tiff)?;
             let png = image.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())?;
-            return Some(bytes(&png));
+            return Some(png.to_vec());
         }
     }
     None
