@@ -27,18 +27,25 @@ const REPO: Option<&str> = option_env!("SCREEN_PORTALS_REPO");
 /// own program file and its own description of the newest release.
 #[cfg(windows)]
 pub const PROGRAM: &str = "ScreenPortals.exe";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub const PROGRAM: &str = "ScreenPortals-macos";
+#[cfg(not(any(windows, target_os = "macos")))]
 pub const PROGRAM: &str = "ScreenPortals-linux-x86_64";
 /// The small file describing the newest release.
 #[cfg(windows)]
 pub const DESCRIPTION: &str = "latest.json";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub const DESCRIPTION: &str = "latest-macos.json";
+#[cfg(not(any(windows, target_os = "macos")))]
 pub const DESCRIPTION: &str = "latest-linux-x86_64.json";
 /// How a program file for this system starts; anything else is not one.
 #[cfg(windows)]
-const MAGIC: &[u8] = b"MZ";
-#[cfg(not(windows))]
-const MAGIC: &[u8] = &[0x7F, b'E', b'L', b'F'];
+const MAGIC: &[&[u8]] = &[b"MZ"];
+/// A Mac program for both kinds of Mac, or for one.
+#[cfg(target_os = "macos")]
+const MAGIC: &[&[u8]] = &[&[0xCA, 0xFE, 0xBA, 0xBE], &[0xCF, 0xFA, 0xED, 0xFE]];
+#[cfg(not(any(windows, target_os = "macos")))]
+const MAGIC: &[&[u8]] = &[&[0x7F, b'E', b'L', b'F']];
 const MAX_PROGRAM: u64 = 64 * 1024 * 1024;
 const MAX_DESCRIPTION: u64 = 4096;
 
@@ -57,7 +64,7 @@ fn tidy_repo(repo: &str) -> Option<&str> {
 pub fn release_url() -> Option<String> {
     this_build()?;
     // Releases only carry programs for these two kinds of computer.
-    if !cfg!(any(windows, all(target_os = "linux", target_arch = "x86_64"))) {
+    if !cfg!(any(windows, target_os = "macos", all(target_os = "linux", target_arch = "x86_64"))) {
         return None;
     }
     Some(format!("https://github.com/{}/releases/latest/download", tidy_repo(REPO?)?))
@@ -110,7 +117,7 @@ pub fn fetch_newer(mine: u64, base: &str, fetch: &dyn Fn(&str, u64) -> Result<Ve
         return Err("the downloaded update did not arrive intact".into());
     }
     // Every program file starts the same way; anything else is not one.
-    if !program.starts_with(MAGIC) {
+    if !MAGIC.iter().any(|magic| program.starts_with(magic)) {
         return Err("the downloaded update is not a program".into());
     }
     Ok(Some((latest.build, program)))
@@ -164,7 +171,7 @@ mod tests {
 
     /// Pretend program files: they start the way real ones do here.
     fn program_file(rest: &str) -> Vec<u8> {
-        [MAGIC, rest.as_bytes()].concat()
+        [MAGIC[0], rest.as_bytes()].concat()
     }
 
     fn description(build: u64, program: &[u8]) -> Vec<u8> {

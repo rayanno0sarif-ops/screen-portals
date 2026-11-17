@@ -42,6 +42,14 @@ windows-sys = { version = "0.59", features = [
 x11rb = { version = "0.13", features = ["xinput", "xtest", "xfixes", "randr"] }
 libc = "0.2"
 
+# macOS: the system's own frameworks, reached from Rust.
+[target.'cfg(target_os = "macos")'.dependencies]
+cpal = "0.18.2"
+libc = "0.2"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+
 [[bin]]
 name = "screen-portals"
 path = "src/main.rs"

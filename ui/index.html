@@ -662,6 +662,7 @@
       .concat(S.peers.map(p => [p.key, esc(p.name), p.connected ? '' : 'Offline']));
     const note = S.sound === 'sending' ? `This computer is muted. Its sound is playing on ${esc(chosen)}.`
       : S.sound === 'waiting' ? `${esc(chosen)} cannot be reached, so sound plays here for now.`
+      : S.sound === 'kept' ? `This computer cannot send its own sound yet, so it plays here. Sound from your other computers plays on ${esc(chosen)}.`
       : S.speakers === S.id ? 'Sound from your other computers plays here.' : '';
     return `<div class="group"><span class="label" id="l-sound">Sound comes out of</span>
       <div class="modes" role="radiogroup" aria-labelledby="l-sound">${options.map(([key, t, d]) =>

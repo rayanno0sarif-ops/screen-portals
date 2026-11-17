@@ -4,17 +4,18 @@ One mouse, keyboard and clipboard across the computers on your desk. Push the
 cursor through the edge of one screen and it comes out on the next computer.
 Everything stays on your local network and is encrypted end to end.
 
-It runs on Windows 10 and 11, and on Linux desktops that use X11 (see
-[Linux](#linux) for what that means and what is missing there). Windows and
-Linux computers work together. The network protocol is platform neutral, so
-other systems can be added without changing it.
+It runs on Windows 10 and 11, on Macs with macOS 11 or later (see
+[Mac](#mac)), and on Linux desktops that use X11 (see [Linux](#linux)). All
+three work together. The network protocol is platform neutral, so other
+systems can be added without changing it.
 
 ## Quick start (the app)
 
 Download `ScreenPortals.exe` from the [latest release](../../releases/latest),
 copy it to both computers and start it on each. It sits
 in the notification area; click its icon to open the settings window.
-(On Linux the file is `ScreenPortals-linux-x86_64`; see [Linux](#linux).)
+(On a Mac it is `ScreenPortals-macos.zip`, see [Mac](#mac); on Linux
+`ScreenPortals-linux-x86_64`, see [Linux](#linux).)
 
 1. Press **Add a computer** on both.
 2. Both show the same six-digit code. Press **Codes match** on each.
@@ -72,6 +73,65 @@ to switch this off. Builds you make yourself never update.
 Updates come over HTTPS from this repository on github.com and nowhere else,
 so whoever can publish releases here decides what runs on the computers using
 it. Keep the account that owns the repository secure.
+
+### Mac
+
+Download `ScreenPortals-macos.zip` from the
+[latest release](../../releases/latest), open it, and move
+**ScreenPortals.app** into your Applications folder (from anywhere else it
+cannot update itself). It runs on both Apple Silicon and Intel Macs.
+
+The first start needs two permissions, because the app is not signed by a
+registered Apple developer:
+
+1. **Opening it.** macOS says it cannot check the app. Open System Settings,
+   then Privacy & Security, scroll down and press **Open Anyway** next to
+   Screen Portals. (On older macOS: Control-click the app and choose Open.)
+2. **Using the mouse and keyboard.** macOS asks to allow it under
+   Privacy & Security, then Accessibility. Switch Screen Portals on there and
+   start it again.
+
+**After each update macOS asks for the second permission again.** macOS
+recognises an app by its signature, and only a paid Apple developer
+signature stays the same from one build to the next. If the mouse stops
+crossing after an update, switch Screen Portals off and on again under
+Accessibility.
+
+The app lives in the menu bar (two small screens). Its menu opens the
+settings window, pauses sharing and quits. `screen-portals-macos` is the
+command-line program. A browser marks downloads as coming from the
+internet, and macOS will not run such a program from Terminal, so clear the
+mark and make it runnable first:
+
+```
+xattr -d com.apple.quarantine screen-portals-macos
+chmod +x screen-portals-macos
+./screen-portals-macos doctor
+```
+
+The last line checks the Mac is ready.
+
+What works on a Mac: the mouse, keyboard and wheel in both directions,
+copied text, files and pictures, **Send files**, playing other computers'
+sound through the Mac's speakers, and automatic updates.
+
+What does not, yet:
+
+- Sending the Mac's own sound to another computer: macOS offers no simple
+  way to record what it plays, so a Mac always plays its own sound. The
+  settings window says so.
+- Carrying a drag across. What you drag *onto* a Mac arrives ready to paste
+  instead; dragging *from* a Mac does not cross.
+- Reopening a browser window's page on the other computer.
+- Swapping Control and Command. A PC keyboard's Ctrl stays Control on the
+  Mac, so copying there is Windows key + C (Command + C), not Ctrl + C.
+- Starting with the Mac automatically.
+
+How far this has been checked: every change is run on one of GitHub's
+Macs, where the real programs pair with a pretend computer, pass the mouse,
+keys, text, a picture and a file across in both directions, and the app is
+started and stopped (`tests/macos-desktop.sh`). It has not yet been checked
+on a real desk, with the permission prompts, or through a Mac update.
 
 ### Linux
 
@@ -203,7 +263,7 @@ about a second).
 - Arranging individual monitors of a multi-monitor computer (each computer is
   one rectangle covering its whole desktop)
 - Relative mouse movement for games
-- macOS, and Linux desktops on Wayland
+- Linux desktops on Wayland
 - Windows that run as administrator, and the lock/UAC screens, ignore
   simulated input unless Screen Portals itself is started as administrator
 
@@ -225,7 +285,8 @@ about a second).
 | Engine | `node.rs` | Ties it together and makes sure nothing stays stuck if a link drops. |
 | Windows | `platform/windows.rs` | Low-level hooks to watch input, `SendInput` to play it back, clipboard listener. |
 | Linux | `platform/linux.rs`, `platform/x11_clip.rs`, `platform/linux_audio.rs` | Watches input through XInput 2, grabs it while the cursor is away, plays it back with XTEST; the X11 clipboard; sound through the desktop's own tools. |
-| Key codes | `keymap.rs` | Windows scan codes and Linux key codes to USB HID usages and back. |
+| Mac | `platform/mac.rs`, `platform/mac_clip.rs`, `platform/mac_audio.rs` | An event tap watches input and holds it back while the cursor is away; posted events play input back; the general pasteboard; sound playback. |
+| Key codes | `keymap.rs` | Windows scan codes, Linux key codes and Mac key codes to USB HID usages and back. |
 
 ### Design choices
 
@@ -263,9 +324,11 @@ about a second).
 | Path | What is there |
 | --- | --- |
 | `src/` | The program. Everything outside `src/platform/` is portable and tested without real devices. |
-| `src/platform/` | The Windows and Linux sides: watching and playing back input, clipboard, sound, drag and drop. |
+| `src/platform/` | The Windows, Mac and Linux sides: watching and playing back input, clipboard, sound, drag and drop. |
 | `ui/index.html` | The settings window (one self-contained page, built into the program). |
 | `tests/loopback.rs` | End-to-end tests: whole engines talking over real sockets to pretend computers. |
+| `tests/macos-desktop.sh` | The real Mac programs on one of GitHub's Macs, paired with a pretend computer (`examples/pretend_peer.rs`). |
+| `packaging/macos/` | What turns the Mac program into ScreenPortals.app. |
 | `tests/linux-desktop.sh` | The real Linux programs on two pretend displays: pairs them, pushes the mouse across, types, copies and comes back. |
 | `examples/ui_demo.rs` | Preview the settings window against pretend computers. |
 | `docs/` | The landing page, served by GitHub Pages. |

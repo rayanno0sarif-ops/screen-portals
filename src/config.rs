@@ -184,6 +184,11 @@ fn default_dir() -> Result<PathBuf, String> {
     if let Some(appdata) = std::env::var_os("APPDATA") {
         return Ok(PathBuf::from(appdata).join("ScreenPortals"));
     }
+    // Where Mac programs keep their settings.
+    #[cfg(target_os = "macos")]
+    if let Some(home) = std::env::var_os("HOME") {
+        return Ok(PathBuf::from(home).join("Library").join("Application Support").join("Screen Portals"));
+    }
     // Linux desktops name their settings folder; "~/.config" is the default.
     if let Some(config) = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|dir| dir.is_absolute()) {
         return Ok(config.join("screen-portals"));
@@ -205,7 +210,13 @@ pub fn default_received_dir() -> PathBuf {
 
 /// This computer's name as shown to others.
 pub fn default_name() -> String {
-    // Windows keeps the name in the environment; Linux keeps it in a file.
+    // Windows keeps the name in the environment, Linux in a file, and a
+    // Mac answers when asked (the name shown in its Sharing settings).
+    let from_mac = || {
+        let out = std::process::Command::new("scutil").args(["--get", "ComputerName"]).stderr(std::process::Stdio::null()).output().ok()?;
+        let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !name.is_empty() && name.len() <= 64).then_some(name)
+    };
     let from_file = || {
         ["/proc/sys/kernel/hostname", "/etc/hostname"]
             .iter()
@@ -217,6 +228,7 @@ pub fn default_name() -> String {
         .or_else(|_| std::env::var("HOSTNAME"))
         .ok()
         .filter(|name| !name.trim().is_empty())
+        .or_else(|| if cfg!(target_os = "macos") { from_mac() } else { None })
         .or_else(from_file)
         .unwrap_or_else(|| "computer".to_string())
 }

@@ -11,7 +11,15 @@ use std::path::{Path, PathBuf};
 pub mod linux;
 #[cfg(target_os = "linux")]
 pub mod linux_audio;
+#[cfg(target_os = "macos")]
+pub mod mac;
+#[cfg(target_os = "macos")]
+pub mod mac_audio;
+#[cfg(target_os = "macos")]
+pub mod mac_clip;
 pub mod mock;
+#[cfg(unix)]
+pub mod unix;
 #[cfg(windows)]
 pub mod win_audio;
 #[cfg(windows)]
@@ -73,6 +81,11 @@ pub trait Platform: Send + Sync + 'static {
     /// `Node::on_audio_captured`. Stopping must have finished, and the
     /// speakers must be back, by the time this returns.
     fn capture_audio(&self, _on: bool) {}
+    /// False where `capture_audio` cannot do anything yet: this computer's
+    /// own sound then always plays here, whatever was chosen.
+    fn can_send_audio(&self) -> bool {
+        true
+    }
     /// Play sound that arrived from another computer: 16-bit stereo at
     /// `rate`. `source` tells senders apart and `seq` orders their packets.
     fn play_audio(&self, _source: u64, _seq: u32, _rate: u32, _stereo: &[i16]) {}

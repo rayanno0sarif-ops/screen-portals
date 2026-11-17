@@ -1,5 +1,5 @@
 //! Translation between each system's own key codes (Windows scan codes,
-//! Linux key codes) and USB HID usage codes. HID usages are what travels on
+//! Linux key codes, Mac virtual key codes) and USB HID usage codes. HID usages are what travels on
 //! the wire, so each platform only needs a table to and from its own codes.
 
 /// (scan code, extended flag, HID usage) for PC "set 1" scan codes.
@@ -165,6 +165,53 @@ pub fn to_linux(hid: u16) -> Option<u16> {
     LINUX.iter().find(|(_, h)| *h == hid).map(|(code, _)| *code)
 }
 
+/// (Mac virtual key code, HID usage). The Mac numbers are the `kVK_*`
+/// values of Apple's `Events.h`. Keys a Mac keyboard lacks are given the
+/// keys Macs conventionally use for them: Print Screen, Scroll Lock and
+/// Pause become F13, F14 and F15, Insert becomes Help, Num Lock becomes
+/// the keypad's Clear key.
+const MAC: &[(u16, u16)] = &[
+    (0x00, 0x04), (0x0B, 0x05), (0x08, 0x06), (0x02, 0x07), (0x0E, 0x08), // A B C D E
+    (0x03, 0x09), (0x05, 0x0A), (0x04, 0x0B), (0x22, 0x0C), (0x26, 0x0D), // F G H I J
+    (0x28, 0x0E), (0x25, 0x0F), (0x2E, 0x10), (0x2D, 0x11), (0x1F, 0x12), // K L M N O
+    (0x23, 0x13), (0x0C, 0x14), (0x0F, 0x15), (0x01, 0x16), (0x11, 0x17), // P Q R S T
+    (0x20, 0x18), (0x09, 0x19), (0x0D, 0x1A), (0x07, 0x1B), (0x10, 0x1C), // U V W X Y
+    (0x06, 0x1D), // Z
+    (0x12, 0x1E), (0x13, 0x1F), (0x14, 0x20), (0x15, 0x21), (0x17, 0x22), // 1 2 3 4 5
+    (0x16, 0x23), (0x1A, 0x24), (0x1C, 0x25), (0x19, 0x26), (0x1D, 0x27), // 6 7 8 9 0
+    (0x24, 0x28), (0x35, 0x29), (0x33, 0x2A), (0x30, 0x2B), (0x31, 0x2C), // Return Escape Backspace Tab Space
+    (0x1B, 0x2D), (0x18, 0x2E), (0x21, 0x2F), (0x1E, 0x30), (0x2A, 0x31), // - = [ ] backslash
+    (0x29, 0x33), (0x27, 0x34), (0x32, 0x35), (0x2B, 0x36), (0x2F, 0x37), // ; ' ` , .
+    (0x2C, 0x38), // /
+    (0x39, 0x39), // Caps Lock
+    (0x7A, 0x3A), (0x78, 0x3B), (0x63, 0x3C), (0x76, 0x3D), (0x60, 0x3E), // F1-F5
+    (0x61, 0x3F), (0x62, 0x40), (0x64, 0x41), (0x65, 0x42), (0x6D, 0x43), // F6-F10
+    (0x67, 0x44), (0x6F, 0x45), // F11 F12
+    (0x69, 0x46), (0x6B, 0x47), (0x71, 0x48), // Print Screen, Scroll Lock, Pause as F13-F15
+    (0x72, 0x49), (0x73, 0x4A), (0x74, 0x4B), (0x75, 0x4C), (0x77, 0x4D), // Insert(Help) Home PageUp Delete End
+    (0x79, 0x4E), (0x7C, 0x4F), (0x7B, 0x50), (0x7D, 0x51), (0x7E, 0x52), // PageDown Right Left Down Up
+    (0x47, 0x53), // Num Lock (keypad Clear)
+    (0x4B, 0x54), (0x43, 0x55), (0x4E, 0x56), (0x45, 0x57), (0x4C, 0x58), // Keypad / * - + Enter
+    (0x53, 0x59), (0x54, 0x5A), (0x55, 0x5B), (0x56, 0x5C), (0x57, 0x5D), // Keypad 1-5
+    (0x58, 0x5E), (0x59, 0x5F), (0x5B, 0x60), (0x5C, 0x61), (0x52, 0x62), // Keypad 6-9 0
+    (0x41, 0x63), // Keypad .
+    (0x0A, 0x64), // extra key next to left Shift on ISO keyboards
+    (0x6E, 0x65), // Menu
+    (0x51, 0x67), // Keypad =
+    (0x3B, 0xE0), (0x38, 0xE1), (0x3A, 0xE2), (0x37, 0xE3), // Left Control Shift Option Command
+    (0x3E, 0xE4), (0x3C, 0xE5), (0x3D, 0xE6), (0x36, 0xE7), // Right Control Shift Option Command
+];
+
+/// Convert a Mac virtual key code into a HID usage.
+pub fn from_mac(code: u16) -> Option<u16> {
+    MAC.iter().find(|(c, _)| *c == code).map(|(_, hid)| *hid)
+}
+
+/// Convert a HID usage into a Mac virtual key code.
+pub fn to_mac(hid: u16) -> Option<u16> {
+    MAC.iter().find(|(_, h)| *h == hid).map(|(code, _)| *code)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +302,43 @@ mod tests {
         assert_eq!(to_linux(0xE3), Some(125)); // KEY_LEFTMETA
         assert_eq!(to_linux(0xE6), Some(100)); // KEY_RIGHTALT
         assert_eq!(to_linux(0x45), Some(88)); // KEY_F12
+    }
+
+    #[test]
+    fn mac_table_has_no_duplicates_and_round_trips() {
+        let mut codes = HashSet::new();
+        let mut hids = HashSet::new();
+        for (code, hid) in MAC {
+            assert!(codes.insert(*code), "duplicate Mac code {code:#x}");
+            assert!(hids.insert(*hid), "duplicate HID usage {hid:#x}");
+            assert_eq!(from_mac(*code), Some(*hid));
+            assert_eq!(to_mac(*hid), Some(*code));
+        }
+    }
+
+    #[test]
+    fn a_mac_can_play_every_key_the_others_send() {
+        for (_, _, hid) in TABLE {
+            assert!(to_mac(*hid).is_some(), "the Mac lacks HID {hid:#x} (from Windows)");
+        }
+        for (_, hid) in LINUX {
+            assert!(to_mac(*hid).is_some(), "the Mac lacks HID {hid:#x} (from Linux)");
+        }
+    }
+
+    #[test]
+    fn well_known_mac_keys() {
+        // Values from Apple's Events.h.
+        assert_eq!(to_mac(0x04), Some(0x00)); // kVK_ANSI_A
+        assert_eq!(to_mac(0x1D), Some(0x06)); // kVK_ANSI_Z
+        assert_eq!(to_mac(0x28), Some(0x24)); // kVK_Return
+        assert_eq!(to_mac(0x2A), Some(0x33)); // kVK_Delete (backspace)
+        assert_eq!(to_mac(0x4C), Some(0x75)); // kVK_ForwardDelete
+        assert_eq!(to_mac(HID_HOME), Some(0x73)); // kVK_Home
+        assert_eq!(to_mac(0x50), Some(0x7B)); // kVK_LeftArrow
+        assert_eq!(to_mac(0xE3), Some(0x37)); // kVK_Command
+        assert_eq!(to_mac(0xE2), Some(0x3A)); // kVK_Option
+        assert_eq!(to_mac(0x3A), Some(0x7A)); // kVK_F1
+        assert_eq!(to_mac(0x45), Some(0x6F)); // kVK_F12
     }
 }

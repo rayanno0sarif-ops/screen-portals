@@ -1,5 +1,5 @@
 # Every change that reaches the main branch is tested, built and published
-# as a release, for Windows and for Linux. Installed copies of Screen
+# as a release, for Windows, Linux and macOS. Installed copies of Screen
 # Portals look at the newest release and update themselves (see
 # src/update.rs), so pushing to main is all it takes to update every
 # computer.
@@ -103,10 +103,72 @@ jobs:
           path: out/
           if-no-files-found: error
 
-  # One release holding both systems' files, made only when both built.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: cargo test --locked
+
+      # One program for both kinds of Mac: built for Apple Silicon and for
+      # Intel, then joined into one file.
+      - name: Build
+        env:
+          SCREEN_PORTALS_BUILD: ${{ github.event_name == 'push' && github.run_number || '' }}
+          SCREEN_PORTALS_REPO: ${{ github.repository }}
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          cargo build --release --locked --example pretend_peer
+
+      # ScreenPortals.app is what people download. Installed copies update
+      # by replacing only the program inside it, so that program is also
+      # published on its own (ScreenPortals-macos). The signature is the
+      # free "ad hoc" kind: enough for a Mac to run it, but macOS still
+      # treats it as coming from an unidentified developer.
+      - name: Package
+        run: |
+          mkdir -p out dist/ScreenPortals.app/Contents/MacOS
+          for name in ScreenPortals screen-portals; do
+            lipo -create "target/aarch64-apple-darwin/release/$name" "target/x86_64-apple-darwin/release/$name" -output "dist/$name"
+          done
+          cp packaging/macos/Info.plist dist/ScreenPortals.app/Contents/
+          mv dist/ScreenPortals dist/ScreenPortals.app/Contents/MacOS/ScreenPortals
+          codesign --force --sign - --identifier io.github.screenportals dist/ScreenPortals.app
+          codesign --force --sign - --identifier io.github.screenportals.cli dist/screen-portals
+          codesign --verify --strict --verbose dist/ScreenPortals.app
+          lipo -archs dist/ScreenPortals.app/Contents/MacOS/ScreenPortals
+          cp dist/ScreenPortals.app/Contents/MacOS/ScreenPortals out/ScreenPortals-macos
+          cp dist/screen-portals out/screen-portals-macos
+          (cd dist && ditto -c -k --keepParent ScreenPortals.app ../out/ScreenPortals-macos.zip)
+          hash=$(shasum -a 256 out/ScreenPortals-macos | cut -d' ' -f1)
+          size=$(stat -f %z out/ScreenPortals-macos)
+          printf '{"build":%s,"sha256":"%s","size":%s}' "${{ github.run_number }}" "$hash" "$size" > out/latest-macos.json
+          cat out/latest-macos.json
+
+      # The real Mac programs, as published, paired with a pretend
+      # computer: push the mouse across, type, copy and come back.
+      - name: Test on this Mac
+        run: |
+          mkdir -p shipped/examples
+          cp dist/screen-portals shipped/
+          cp target/release/examples/pretend_peer shipped/examples/
+          bash tests/macos-desktop.sh shipped dist/ScreenPortals.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/
+          if-no-files-found: error
+
+  # One release holding every system's files. Windows and Linux must have
+  # built; if the Mac did not, the release goes out without Mac files and
+  # Macs simply keep the version they have.
   release:
-    if: github.event_name == 'push'
-    needs: [windows, linux]
+    if: github.event_name == 'push' && !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success'
+    needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -120,8 +182,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: >
           gh release create "build-${{ github.run_number }}"
-          out/ScreenPortals.exe out/screen-portals.exe out/latest.json
-          out/ScreenPortals-linux-x86_64 out/screen-portals-linux-x86_64 out/latest-linux-x86_64.json
+          out/*
           --title "Build ${{ github.run_number }}"
           --notes "Built from ${{ github.sha }}. Installed copies update to this by themselves."
           --target "${{ github.sha }}"
