@@ -36,6 +36,10 @@ static WAITING: Mutex<Vec<mpsc::Sender<Option<Vec<u8>>>>> = Mutex::new(Vec::new(
 thread_local! {
     /// The clipboard's counter when it was last looked at (main thread).
     static SEEN: Cell<isize> = const { Cell::new(0) };
+    /// The clipboard was empty when last looked at. Programs empty it, then
+    /// fill it, and the counter only moves for the emptying, so an empty
+    /// clipboard is looked at again until something arrives.
+    static EMPTY: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Put this on the clipboard (within a tenth of a second). Safe from any thread.
@@ -183,9 +187,12 @@ pub fn tick(node: &Arc<Node>) {
         }
     }
     let count = board.changeCount();
-    if SEEN.with(|seen| seen.replace(count)) == count {
+    let changed = SEEN.with(|seen| seen.replace(count)) != count;
+    let empty = board.types().is_none_or(|types| types.count() == 0);
+    if !changed && !(EMPTY.get() && !empty) {
         return;
     }
+    EMPTY.set(empty);
     match news(&board) {
         News::Files(paths) => node.on_clipboard_files(paths),
         News::Text(text) => node.on_clipboard_text(text),

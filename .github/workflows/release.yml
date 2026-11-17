@@ -180,10 +180,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: >
-          gh release create "build-${{ github.run_number }}"
-          out/*
-          --title "Build ${{ github.run_number }}"
-          --notes "Built from ${{ github.sha }}. Installed copies update to this by themselves."
-          --target "${{ github.sha }}"
-          --latest
+        run: |
+          # The Mac did not build this time: keep offering the last Mac files,
+          # so the Mac download never disappears. Macs see their own build
+          # number in them and stay as they are.
+          [ -e out/latest-macos.json ] || gh release download --pattern '*macos*' --dir out || true
+          gh release create "build-${{ github.run_number }}" out/* \
+            --title "Build ${{ github.run_number }}" \
+            --notes "Built from ${{ github.sha }}. Installed copies update to this by themselves." \
+            --target "${{ github.sha }}" \
+            --latest
